@@ -13,8 +13,10 @@
     addLabel?: string;
     suggestions?: readonly string[];
     variables?: VariableSuggestion[];
+    disabledKeys?: string[];
+    onDisabledChange?: (keys: string[]) => void;
   }
-  let { entries, onchange, keyPlaceholder = "clave", valuePlaceholder = "valor", addLabel = "Añadir", suggestions = [], variables }: Props = $props();
+  let { entries, onchange, keyPlaceholder = "clave", valuePlaceholder = "valor", addLabel = "Añadir", suggestions = [], variables, disabledKeys = [], onDisabledChange }: Props = $props();
 
   const suggestionsId = $props.id();
 
@@ -91,12 +93,19 @@
   }
 
   function edit(i: number, field: "k" | "v", val: string) {
+    const oldKey = rows[i].k.trim();
     rows[i][field] = val;
+    if (field === "k" && onDisabledChange && disabledKeys.includes(oldKey)) {
+      const next = val.trim();
+      onDisabledChange(disabledKeys.filter((key) => key !== oldKey).concat(next ? [next] : []));
+    }
     if (i === rows.length - 1 && (rows[i].k || rows[i].v)) rows.push({ k: "", v: "" });
     commit();
   }
 
   function remove(i: number) {
+    const key = rows[i].k.trim();
+    if (onDisabledChange && disabledKeys.includes(key)) onDisabledChange(disabledKeys.filter((item) => item !== key));
     rows.splice(i, 1);
     if (rows.length === 0 || rows[rows.length - 1].k) rows.push({ k: "", v: "" });
     commit();
@@ -171,7 +180,8 @@
 <table class="kv" bind:this={table}>
   <tbody>
     {#each rows as row, i (i)}
-      <tr>
+      <tr class:disabled-row={!!row.k.trim() && disabledKeys.includes(row.k.trim())}>
+        {#if onDisabledChange}<td class="toggle">{#if row.k.trim()}<input type="checkbox" checked={!disabledKeys.includes(row.k.trim())} aria-label={`Activar ${row.k}`} onchange={(e) => onDisabledChange?.(e.currentTarget.checked ? disabledKeys.filter((key) => key !== row.k.trim()) : [...disabledKeys, row.k.trim()])} />{/if}</td>{/if}
         <td style="width: 38%">
           <input class="k" autocomplete="off" value={row.k} placeholder={keyPlaceholder} aria-label="{keyPlaceholder} {i + 1}"
             role={suggestions.length ? "combobox" : undefined} aria-autocomplete={suggestions.length ? "list" : undefined}
@@ -230,6 +240,9 @@
   }
   .suggestions button:hover, .suggestions button.active { background: var(--accent-soft); color: var(--accent-strong); }
   .suggestion-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--bg-hover); color: var(--text-muted); font: 600 11px var(--font); }
+  .kv .toggle { width: 28px; text-align: center; }
+  .kv .toggle input { width: 14px; height: 14px; padding: 0; accent-color: var(--accent); }
+  .disabled-row td:not(.toggle):not(.del) { opacity: .5; }
   .hint {
     font-size: 11px;
     flex: 1 1 210px;

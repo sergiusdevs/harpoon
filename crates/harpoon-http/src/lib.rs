@@ -158,7 +158,9 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
     }
     let mut query = IndexMap::new();
     for (k, v) in &request.query {
-        query.insert(scope.interpolate(k)?, scope.interpolate(v)?);
+        if !request.disabled_query.contains(k) {
+            query.insert(scope.interpolate(k)?, scope.interpolate(v)?);
+        }
     }
 
     let auth = match &request.auth {

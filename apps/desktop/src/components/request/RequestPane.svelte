@@ -87,7 +87,7 @@
         if (!store.draft || store.selected !== selected) return;
         Object.assign(store.draft, {
           method: imported.method, url: imported.url, headers: imported.headers,
-          query: imported.query, body: imported.body, auth: imported.auth,
+          query: imported.query, disabled_query: imported.disabled_query, body: imported.body, auth: imported.auth,
         });
         store.touch();
         store.status = { kind: "ok", text: "Solicitud rellenada desde cURL · guarda los cambios" };
@@ -220,7 +220,7 @@
 
     <div class="content">
       {#if tab === "params"}
-        <KeyValue {variables} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
+        <KeyValue {variables} disabledKeys={req.disabled_query} onDisabledChange={(keys) => set("disabled_query", keys)} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
       {:else if tab === "headers"}
         <KeyValue {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} />
       {:else if tab === "body"}

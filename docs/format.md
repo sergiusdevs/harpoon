@@ -64,6 +64,7 @@ Alternativa sin archivo: variable de entorno `HARPOON_TOKEN` (fase 1).
 name = "Crear usuario"
 method = "POST"                 # GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
 url = "{{base_url}}/{{api_version}}/users"
+disabled_query = ["notify"]     # opcional: conserva el parámetro sin enviarlo
 docs = """
 Crea un usuario. Devuelve 201 con el recurso creado.
 """

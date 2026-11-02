@@ -244,7 +244,7 @@ function mockApi(): Api {
       });
       const headers: Record<string, string> = {}, query: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers)) headers[resolve(name)] = resolve(value);
-      for (const [name, value] of Object.entries(request.query)) query[resolve(name)] = resolve(value);
+      for (const [name, value] of Object.entries(request.query)) if (!request.disabled_query.includes(name)) query[resolve(name)] = resolve(value);
       const auth = request.auth.type === "inherit" ? col.meta.auth : request.auth;
       let digest: CurlPrepared["digest"] = null;
       if (auth.type === "oauth2") throw new Error("OAuth2 necesita obtener un token al enviar y no se puede exportar automáticamente a cURL.");
@@ -293,11 +293,11 @@ function mockApi(): Api {
       const url = resolveMockUrl(key, env, request.url);
       if (url.endsWith("/logo")) {
         const png = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAUklEQVR4nO3PsQ0AIAwDwcD+O8MGoEhBuC8tnZ3kAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4bgEWmwABNMI7oAAAAABJRU5ErkJggg==";
-        return { sent: { method: request.method, url, headers: request.headers, query: request.query }, response: { status: 200, headers: { "content-type": "image/png", "content-length": "150", "set-cookie": "session=abc123; Path=/; HttpOnly\ntheme=dark; Path=/; Max-Age=3600" }, body: "", is_json: false, is_binary: true, body_base64: png, elapsed_ms: 7, size: 150 }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
+        return { sent: { method: request.method, url, headers: request.headers, query: Object.fromEntries(Object.entries(request.query).filter(([key]) => !request.disabled_query.includes(key))) }, response: { status: 200, headers: { "content-type": "image/png", "content-length": "150", "set-cookie": "session=abc123; Path=/; HttpOnly\ntheme=dark; Path=/; Max-Age=3600" }, body: "", is_json: false, is_binary: true, body_base64: png, elapsed_ms: 7, size: 150 }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
       }
       if (url.endsWith("/docs")) {
         const html = "<!doctype html><html><body style=\"font-family:sans-serif;padding:24px\"><h1>Petstore API</h1><p>Documentación <b>HTML</b> servida por la API.</p><ul><li>GET /pet</li><li>POST /pet</li></ul></body></html>";
-        return { sent: { method: request.method, url, headers: request.headers, query: request.query }, response: { status: 200, headers: { "content-type": "text/html; charset=utf-8", "content-length": String(html.length) }, body: html, is_json: false, elapsed_ms: 9, size: html.length }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
+        return { sent: { method: request.method, url, headers: request.headers, query: Object.fromEntries(Object.entries(request.query).filter(([key]) => !request.disabled_query.includes(key))) }, response: { status: 200, headers: { "content-type": "text/html; charset=utf-8", "content-length": String(html.length) }, body: html, is_json: false, elapsed_ms: 9, size: html.length }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
       }
       const status = request.method === "POST" ? 201 : url.includes("inventory") ? 500 : 200;
       const body =
@@ -331,7 +331,7 @@ function mockApi(): Api {
         tests.push({ name: "rápido", passed: elapsed < 50, detail: elapsed < 50 ? undefined : `esperaba < 50, recibido ${elapsed}` });
       }
       return {
-        sent: { method: request.method, url, headers: { ...request.headers, api_key: "dev-key" }, query: request.query, body: request.body.type === "json" ? request.body.json : undefined },
+        sent: { method: request.method, url, headers: { ...request.headers, api_key: "dev-key" }, query: Object.fromEntries(Object.entries(request.query).filter(([key]) => !request.disabled_query.includes(key))), body: request.body.type === "json" ? request.body.json : undefined },
         response: {
           status,
           headers: { "content-type": "application/json", "content-length": String(text.length), server: "petstore/1.4.2", date: new Date().toUTCString() },

@@ -196,6 +196,9 @@ pub struct Request {
     pub headers: IndexMap<String, String>,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub query: IndexMap<String, String>,
+    /// Nombres de parámetros conservados en la colección pero excluidos del envío.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled_query: Vec<String>,
     #[serde(default)]
     pub auth: Auth,
     #[serde(default)]
@@ -217,6 +220,7 @@ impl Request {
             url: url.into(),
             headers: IndexMap::new(),
             query: IndexMap::new(),
+            disabled_query: Vec::new(),
             auth: Auth::Inherit,
             body: Body::None,
             scripts: Scripts::default(),

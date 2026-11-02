@@ -81,6 +81,7 @@ export interface Request {
   url: string;
   headers: Record<string, string>;
   query: Record<string, string>;
+  disabled_query: string[];
   auth: Auth;
   body: Body;
   scripts: Scripts;
@@ -161,6 +162,7 @@ export function emptyRequest(name: string, method: Method = "GET"): Request {
     url: "{{base_url}}/",
     headers: {},
     query: {},
+    disabled_query: [],
     auth: { type: "inherit" },
     body: { type: "none" },
     scripts: { pre: "", post: "", test: "" },
@@ -177,6 +179,7 @@ export function normalizeRequest(r: Partial<Request> & { name: string; url: stri
     url: r.url,
     headers: r.headers ?? {},
     query: r.query ?? {},
+    disabled_query: r.disabled_query ?? [],
     auth: normalizeAuth(r.auth as Auth | undefined),
     body: r.body ?? { type: "none" },
     scripts: { pre: "", post: "", test: "", ...(r.scripts ?? {}) },
