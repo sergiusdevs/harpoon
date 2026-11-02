@@ -1,0 +1,162 @@
+//! Tipos del modelo: lo que se guarda en disco y lo que manipulan las
+//! demás capas. Todo es `serde` para que el formato en disco sea
+//! literalmente este modelo.
+
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
+
+/// Método HTTP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum Method {
+    #[default]
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
+}
+
+impl std::fmt::Display for Method {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Patch => "PATCH",
+            Self::Delete => "DELETE",
+            Self::Head => "HEAD",
+            Self::Options => "OPTIONS",
+        };
+        f.write_str(s)
+    }
+}
+
+/// Autenticación de una solicitud. `None` = heredar de la carpeta/colección.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Auth {
+    #[default]
+    Inherit,
+    None,
+    Basic {
+        username: String,
+        password: String,
+    },
+    Bearer {
+        token: String,
+    },
+    ApiKey {
+        key: String,
+        value: String,
+        #[serde(default)]
+        r#in: ApiKeyLocation,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyLocation {
+    #[default]
+    Header,
+    Query,
+}
+
+/// Cuerpo de la solicitud.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Body {
+    #[default]
+    None,
+    Json {
+        json: String,
+    },
+    Text {
+        text: String,
+    },
+    Form {
+        fields: IndexMap<String, String>,
+    },
+}
+
+/// Scripts asociados a una solicitud (fase 3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Scripts {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pre: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub post: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub test: String,
+}
+
+/// Una solicitud, tal y como se guarda en `requests/**/*.toml`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Request {
+    pub name: String,
+    #[serde(default)]
+    pub method: Method,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub headers: IndexMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub query: IndexMap<String, String>,
+    #[serde(default)]
+    pub auth: Auth,
+    #[serde(default)]
+    pub body: Body,
+    #[serde(default)]
+    pub scripts: Scripts,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub docs: String,
+}
+
+impl Request {
+    #[must_use]
+    pub fn new(name: impl Into<String>, method: Method, url: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            method,
+            url: url.into(),
+            headers: IndexMap::new(),
+            query: IndexMap::new(),
+            auth: Auth::Inherit,
+            body: Body::None,
+            scripts: Scripts::default(),
+            docs: String::new(),
+        }
+    }
+}
+
+/// Un entorno: un conjunto de variables con nombre (`environments/<nombre>.toml`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Environment {
+    #[serde(default)]
+    pub vars: IndexMap<String, String>,
+    /// Nombres de variables cuyo valor NO se guarda en el repo: se leen de
+    /// `environments/<nombre>.secrets.toml` (ignorado por Git) o de variables
+    /// de entorno `ARPON_<NOMBRE>`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secrets: Vec<String>,
+}
+
+/// Metadatos de la colección (`arpon.toml`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionMeta {
+    pub name: String,
+    /// Versión del formato en disco, para migraciones futuras.
+    #[serde(default = "default_format_version")]
+    pub format: u32,
+    #[serde(default)]
+    pub default_environment: Option<String>,
+    #[serde(default)]
+    pub vars: IndexMap<String, String>,
+    #[serde(default)]
+    pub auth: Auth,
+}
+
+fn default_format_version() -> u32 {
+    1
+}

@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/arpon-core", "crates/arpon-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/sergiusdev/arpon"
+rust-version = "1.85"
+
+[workspace.dependencies]
+arpon-core = { path = "crates/arpon-core" }
+
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+clap = { version = "4", features = ["derive"] }
+walkdir = "2"
+indexmap = { version = "2", features = ["serde"] }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

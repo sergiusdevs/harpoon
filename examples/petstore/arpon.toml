@@ -1,0 +1,12 @@
+name = "Petstore"
+format = 1
+default_environment = "dev"
+
+[vars]
+api_version = "v2"
+
+[auth]
+type = "api_key"
+key = "api_key"
+value = "{{api_key}}"
+in = "header"

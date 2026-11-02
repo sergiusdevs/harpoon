@@ -1,0 +1,20 @@
+[package]
+name = "arpon"
+description = "Arpón — cliente de APIs 100% offline, en Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "arpon"
+path = "src/main.rs"
+
+[dependencies]
+arpon-core.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

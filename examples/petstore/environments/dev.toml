@@ -1,0 +1,5 @@
+secrets = ["api_key"]
+
+[vars]
+base_url = "http://localhost:8080"
+api_key = "dev-key-no-secreta"

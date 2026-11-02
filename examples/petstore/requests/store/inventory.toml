@@ -1,0 +1,6 @@
+name = "Inventario"
+method = "GET"
+url = "{{base_url}}/{{api_version}}/store/inventory"
+
+[auth]
+type = "none"
