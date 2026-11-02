@@ -77,7 +77,7 @@ notify = "true"
 [auth]                          # inherit (por defecto) | none | basic | bearer | api_key | digest | oauth2 (ver docs/auth.md)
 type = "inherit"
 
-[body]                          # none | json | text | form | multipart
+[body]                          # none | json | text | xml | binary | form | multipart
 type = "json"
 json = '''
 { "name": "Ada", "email": "ada@example.com" }
@@ -99,6 +99,15 @@ test('crea el usuario', () => {
 """
 ```
 
+
+### XML y cuerpos binarios
+
+Un cuerpo XML se define con `type = "xml"` y `xml = "<root/>"`; Harpoon
+utiliza `application/xml` si no se indica otra cabecera. Para enviar los bytes
+completos de un archivo, usa `type = "binary"` y `path = "fixtures/data.bin"`.
+La ruta se resuelve desde la raíz de la colección y puede usar variables. El
+archivo se transmite al enviar, sin copiarlo a la colección. El tipo por defecto
+es `application/octet-stream` y se puede cambiar en las cabeceras.
 
 ### Formularios multipart y archivos
 

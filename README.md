@@ -23,7 +23,7 @@ Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
 | Área | Estado |
 |---|---|
 | Colecciones en TOML, carpetas anidadas, entornos, secretos fuera de Git | ✅ |
-| REST: todos los métodos, cabeceras, query, JSON/texto/formulario y multipart con archivos | ✅ |
+| REST: todos los métodos, cabeceras, query, JSON/texto/XML/binario, formulario y multipart con archivos | ✅ |
 | Auth: Basic, Bearer, API key, Digest, OAuth2 (3 flujos, caché de tokens) | ✅ |
 | TLS: rustls, CA propia, certificado de cliente (mTLS), proxy, timeouts | ✅ |
 | Variables `{{var}}` por ámbitos + dinámicas (`$uuid`, `$timestamp`, `$randomInt`…) | ✅ |

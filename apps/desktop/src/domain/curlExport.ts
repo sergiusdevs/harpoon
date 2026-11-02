@@ -1,7 +1,7 @@
 import type { Method, Settings, MultipartPart } from "./types";
 
 export interface CurlPrepared {
-  request: { method: Method; url: string; headers: Record<string, string>; query: Record<string, string>; body?: string | null; multipart?: MultipartPart[] | null };
+  request: { method: Method; url: string; headers: Record<string, string>; query: Record<string, string>; body?: string | null; multipart?: MultipartPart[] | null; binary_path?: string | null };
   digest: { username: string; password: string } | null;
   settings: Settings;
 }
@@ -44,6 +44,7 @@ export function buildCurl(prepared: CurlPrepared): string {
       }
     }
   }
+  if (request.binary_path) args.push("--data-binary", quote(`@${request.binary_path}`));
   if (request.body !== undefined && request.body !== null) {
     if (!Object.keys(request.headers).some((name) => name.toLowerCase() === "content-type")) args.push("--header", quote("Content-Type:"));
     args.push("--data-raw", quote(request.body));

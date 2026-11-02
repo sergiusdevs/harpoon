@@ -136,6 +136,12 @@ pub enum Body {
     Text {
         text: String,
     },
+    Xml {
+        xml: String,
+    },
+    Binary {
+        path: String,
+    },
     Form {
         fields: IndexMap<String, String>,
     },

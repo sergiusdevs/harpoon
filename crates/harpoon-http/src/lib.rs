@@ -63,6 +63,9 @@ pub struct Prepared {
     pub query: IndexMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+    /// Ruta del cuerpo binario, resuelta respecto a la colección.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binary_path: Option<String>,
     /// Partes multipart resueltas; los archivos se leen al enviar.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multipart: Option<Vec<MultipartPart>>,
@@ -229,6 +232,7 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
     }
 
     let mut multipart = None;
+    let mut binary_path = None;
     let body = match &request.body {
         Body::None => None,
         Body::Json { json } => {
@@ -238,6 +242,29 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
             Some(scope.interpolate(json)?)
         }
         Body::Text { text } => Some(scope.interpolate(text)?),
+        Body::Xml { xml } => {
+            if !headers
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case("content-type"))
+            {
+                headers.insert("Content-Type".into(), "application/xml".into());
+            }
+            Some(scope.interpolate(xml)?)
+        }
+        Body::Binary { path } => {
+            let path = scope.interpolate(path)?;
+            if path.trim().is_empty() {
+                return Err(Error::Multipart("la ruta del archivo está vacía".into()));
+            }
+            binary_path = Some(collection.root.join(path).to_string_lossy().into_owned());
+            if !headers
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case("content-type"))
+            {
+                headers.insert("Content-Type".into(), "application/octet-stream".into());
+            }
+            None
+        }
         Body::Multipart { parts } => {
             if headers
                 .keys()
@@ -309,6 +336,7 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
         headers,
         query,
         body,
+        binary_path,
         multipart,
         pending_auth,
     })
@@ -450,6 +478,9 @@ impl Client {
         if let Some(body) = &prepared.body {
             req = req.body(body.clone());
         }
+        if let Some(path) = &prepared.binary_path {
+            req = with_binary_body(req, path, &prepared.headers).await?;
+        }
         if let Some(parts) = &prepared.multipart {
             let mut form = reqwest::multipart::Form::new();
             for part in parts {
@@ -525,6 +556,35 @@ impl Client {
             elapsed_ms,
         })
     }
+}
+
+async fn with_binary_body(
+    mut request: reqwest::RequestBuilder,
+    path: &str,
+    headers: &IndexMap<String, String>,
+) -> Result<reqwest::RequestBuilder> {
+    let file_path = std::path::Path::new(path);
+    let file = tokio::fs::File::open(file_path)
+        .await
+        .map_err(|source| Error::UploadFile {
+            path: file_path.to_path_buf(),
+            source,
+        })?;
+    if !headers
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case("content-length"))
+    {
+        let size = file
+            .metadata()
+            .await
+            .map_err(|source| Error::UploadFile {
+                path: file_path.to_path_buf(),
+                source,
+            })?
+            .len();
+        request = request.header(reqwest::header::CONTENT_LENGTH, size);
+    }
+    Ok(request.body(reqwest::Body::from(file)))
 }
 
 fn read_pem(base: &std::path::Path, p: &str) -> Result<Vec<u8>> {

@@ -57,6 +57,8 @@ export type Body =
   | { type: "none" }
   | { type: "json"; json: string }
   | { type: "text"; text: string }
+  | { type: "xml"; xml: string }
+  | { type: "binary"; path: string }
   | { type: "form"; fields: Record<string, string> }
   | { type: "multipart"; parts: MultipartPart[] };
 
@@ -133,6 +135,7 @@ export interface Exchange {
     query: Record<string, string>;
     body?: string;
     multipart?: MultipartPart[];
+    binary_path?: string;
   };
   response: {
     status: number;

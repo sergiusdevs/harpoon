@@ -49,9 +49,10 @@ fn to_script_request(req: &Request) -> ScriptRequest {
         headers: req.headers.clone(),
         query: req.query.clone(),
         body: match &req.body {
-            Body::None | Body::Form { .. } | Body::Multipart { .. } => None,
+            Body::None | Body::Form { .. } | Body::Multipart { .. } | Body::Binary { .. } => None,
             Body::Json { json } => Some(json.clone()),
             Body::Text { text } => Some(text.clone()),
+            Body::Xml { xml } => Some(xml.clone()),
         },
     }
 }
@@ -62,9 +63,10 @@ fn apply_script_request(req: &mut Request, s: ScriptRequest) {
     req.headers = s.headers;
     req.query = s.query;
     match (&req.body, s.body) {
-        (Body::Form { .. } | Body::Multipart { .. }, _) => {}
+        (Body::Form { .. } | Body::Multipart { .. } | Body::Binary { .. }, _) => {}
         (Body::Json { .. }, Some(b)) => req.body = Body::Json { json: b },
         (Body::Text { .. }, Some(b)) => req.body = Body::Text { text: b },
+        (Body::Xml { .. }, Some(b)) => req.body = Body::Xml { xml: b },
         (Body::None, Some(b)) => {
             req.body = if serde_json::from_str::<serde_json::Value>(&b).is_ok() {
                 Body::Json { json: b }

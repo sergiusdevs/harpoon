@@ -43,6 +43,9 @@ pub fn send_human(x: &Execution, verbose: bool) {
         if let Some(body) = &prepared.body {
             println!(">\n{body}");
         }
+        if let Some(path) = &prepared.binary_path {
+            println!("> binario @{path}");
+        }
         if let Some(parts) = &prepared.multipart {
             for part in parts {
                 match part {

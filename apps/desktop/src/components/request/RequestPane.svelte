@@ -6,7 +6,7 @@
   import AuthForm from "./AuthForm.svelte";
   import MethodBadge from "../common/MethodBadge.svelte";
   import VariableInput from "../common/VariableInput.svelte";
-  import { api } from "../../services/api";
+  import { api, isMock } from "../../services/api";
   import ResponsePane from "../response/ResponsePane.svelte";
   import Splitter from "../common/Splitter.svelte";
   import { folderChain } from "../../domain/paths";
@@ -107,14 +107,14 @@
   }
 
   const bodyText = $derived(
-    !req ? "" : req.body.type === "json" ? req.body.json : req.body.type === "text" ? req.body.text : "",
+    !req ? "" : req.body.type === "json" ? req.body.json : req.body.type === "text" ? req.body.text : req.body.type === "xml" ? req.body.xml : "",
   );
   const bodyKind = $derived(req?.body.type ?? "none");
 
   function setBodyKind(kind: Body["type"]) {
     const text = bodyText;
     const next: Body =
-      kind === "json" ? { type: "json", json: text } : kind === "text" ? { type: "text", text } : kind === "form" ? { type: "form", fields: {} } : kind === "multipart" ? { type: "multipart", parts: [] } : { type: "none" };
+      kind === "json" ? { type: "json", json: text } : kind === "text" ? { type: "text", text } : kind === "xml" ? { type: "xml", xml: text } : kind === "binary" ? { type: "binary", path: "" } : kind === "form" ? { type: "form", fields: {} } : kind === "multipart" ? { type: "multipart", parts: [] } : { type: "none" };
     set("body", next);
   }
 
@@ -136,6 +136,7 @@
     if (!req) return;
     if (req.body.type === "json") set("body", { type: "json", json: text });
     else if (req.body.type === "text") set("body", { type: "text", text });
+    else if (req.body.type === "xml") set("body", { type: "xml", xml: text });
   }
 
   function onKey(e: KeyboardEvent) {
@@ -226,7 +227,7 @@
         <div class="body">
           <div class="body-bar">
             <div class="segmented" role="radiogroup" aria-label="Tipo de cuerpo">
-              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["text", "Texto"], ["form", "Formulario"], ["multipart", "Multipart"]] as [k, label]}
+              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["text", "Texto"], ["xml", "XML"], ["binary", "Binario"], ["form", "Formulario"], ["multipart", "Multipart"]] as [k, label]}
                 <button role="radio" aria-checked={bodyKind === k} class:active={bodyKind === k} onclick={() => setBodyKind(k as Body["type"])}>{label}</button>
               {/each}
             </div>
@@ -235,9 +236,14 @@
               {#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}
             {/if}
           </div>
-          {#if bodyKind === "json" || bodyKind === "text"}
+          {#if bodyKind === "json" || bodyKind === "text" || bodyKind === "xml"}
             <div class="editor-wrap">
               <CodeEditor value={bodyText} language={bodyKind === "json" ? "json" : "text"} onchange={setBodyText} />
+            </div>
+          {:else if bodyKind === "binary"}
+            <div class="binary-editor">
+              <p class="muted">Selecciona un archivo o escribe una ruta relativa a la colección.</p>
+              <div class="binary-row"><VariableInput value={req.body.type === "binary" ? req.body.path : ""} {variables} label="Ruta del archivo binario" placeholder="archivos/datos.bin" oninput={(e) => set("body", { type: "binary", path: e.currentTarget.value })} /><button class="btn small" disabled={isMock} onclick={async () => { const path = await (await api).pickFile(); if (path && store.draft?.body.type === "binary") set("body", { type: "binary", path }); }}>Elegir…</button></div>
             </div>
           {:else if bodyKind === "form"}
             <KeyValue {variables} entries={req.body.type === "form" ? req.body.fields : {}} onchange={(fields) => set("body", { type: "form", fields })} keyPlaceholder="campo" addLabel="Añadir campo" />
@@ -370,12 +376,16 @@
   .resolved-url { flex: 0 0 auto; display: flex; gap: 8px; padding: 0 20px 9px; font-size: 11px; min-width: 0; }
   .resolved-url span:last-child { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
   .resolved-url span.unresolved { color: var(--warn); }
+  .binary-editor p { font-size: 12px; margin: 4px 0 10px; }
+  .binary-row { display: flex; align-items: center; gap: 8px; }
   .body-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
   }
+  .body-bar .segmented { max-width: 100%; overflow-x: auto; }
+  .body-bar .segmented button { white-space: nowrap; }
   .json-error {
     color: var(--err);
     font-size: 11.5px;

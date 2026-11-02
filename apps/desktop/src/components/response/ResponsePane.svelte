@@ -253,6 +253,7 @@
             </tbody>
           </table>
           {#if x.sent.body}<pre class="mono body">{x.sent.body}</pre>{/if}
+          {#if x.sent.binary_path}<div class="multipart-row mono">Archivo binario: {x.sent.binary_path}</div>{/if}
           {#if x.sent.multipart}
             <div class="multipart-sent"><div class="group muted">MULTIPART</div>{#each x.sent.multipart as part}<div class="multipart-row mono"><span>{part.name}</span><span>{part.type === "file" ? `Archivo: ${part.path}` : part.value}</span></div>{/each}</div>
           {/if}

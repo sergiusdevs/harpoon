@@ -258,6 +258,8 @@ function mockApi(): Api {
       let body: string | undefined;
       if (request.body.type === "json") { body = resolve(request.body.json); headers["Content-Type"] ??= "application/json"; }
       else if (request.body.type === "text") body = resolve(request.body.text);
+      else if (request.body.type === "xml") { body = resolve(request.body.xml); if (!Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) headers["Content-Type"] = "application/xml"; }
+      if (request.body.type === "binary" && !Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) headers["Content-Type"] = "application/octet-stream";
       else if (request.body.type === "form") {
         body = new URLSearchParams(Object.entries(request.body.fields).map(([k, v]) => [k, resolve(v)])).toString();
         headers["Content-Type"] ??= "application/x-www-form-urlencoded";
@@ -266,7 +268,8 @@ function mockApi(): Api {
         ? { type: "text" as const, name: resolve(part.name), value: resolve(part.value) }
         : { type: "file" as const, name: resolve(part.name), path: resolve(part.path), content_type: part.content_type ? resolve(part.content_type) : undefined }) : undefined;
       if (multipart && Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) throw new Error("Elimina Content-Type para generar el límite multipart automáticamente");
-      return { request: { method: request.method, url: resolve(request.url), headers, query, body, multipart }, digest, settings: col.meta.settings };
+      const binary_path = request.body.type === "binary" ? resolve(request.body.path) : undefined;
+      return { request: { method: request.method, url: resolve(request.url), headers, query, body, multipart, binary_path }, digest, settings: col.meta.settings };
     },
     saveResponse: async (filename, bytes) => {
       const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
