@@ -1,6 +1,8 @@
 <script lang="ts">
   import { store, basename } from "./store.svelte";
   import ContextMenu, { type Item } from "./ContextMenu.svelte";
+  import Icon from "./Icon.svelte";
+  import MethodBadge from "./MethodBadge.svelte";
 
   let filter = $state("");
   let filterInput = $state<HTMLInputElement | null>(null);
@@ -192,7 +194,7 @@
         ondragend={dragEnd}
         title={req.name}
       >
-        <span class="method {req.method}">{req.method}</span>
+        <span class="badge-slot"><MethodBadge method={req.method} /></span>
         <span class="name">{n.name}</span>
         {#if store.selected === n.key && store.dirty}<span class="dot" title="Sin guardar" aria-label="sin guardar"></span>{/if}
       </div>
@@ -220,6 +222,7 @@
         ondrop={(e) => drop(e, n.path)}
       >
         <span class="chev" class:closed={collapsed[n.path]} aria-hidden="true">▾</span>
+        <span class="ficon"><Icon name={collapsed[n.path] ? "folder" : "folder-open"} size={14} /></span>
         <span class="fname">{n.name}</span>
         <span class="n muted">{countRequests(n)}</span>
       </div>
@@ -408,10 +411,11 @@
     user-select: none;
   }
   .folder {
-    color: var(--text-muted);
-    font-size: 12px;
+    color: var(--text);
+    font-size: 12.5px;
     font-weight: 600;
     margin-top: 2px;
+    gap: 6px;
   }
   .fname {
     flex: 1;
@@ -441,9 +445,15 @@
   .chev.closed {
     transform: rotate(-90deg);
   }
-  .method {
-    width: 48px;
+  .badge-slot {
+    width: 58px;
     flex: 0 0 auto;
+    display: inline-flex;
+  }
+  .ficon {
+    display: inline-flex;
+    color: var(--warn);
+    opacity: 0.85;
   }
   .name {
     overflow: hidden;

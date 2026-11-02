@@ -4,6 +4,7 @@
   import CodeEditor from "./CodeEditor.svelte";
   import KeyValue from "./KeyValue.svelte";
   import AuthForm from "./AuthForm.svelte";
+  import MethodBadge from "./MethodBadge.svelte";
 
   type Tab = "params" | "headers" | "body" | "auth" | "expect" | "scripts" | "tests" | "docs";
   let tab = $state<Tab>("params");
@@ -73,7 +74,7 @@
         aria-label="Nombre de la solicitud"
         spellcheck="false"
       />
-      <span class="key mono muted" title="Archivo">{store.selected}.toml</span>
+      <span class="key mono muted" title="Archivo"><MethodBadge method={req.method} compact={false} /> {store.selected}.toml</span>
     </div>
     <div class="urlbar">
       <select class="method-select method {req.method}" value={req.method} onchange={(e) => set("method", e.currentTarget.value as typeof req.method)}>
@@ -215,6 +216,9 @@
   .key {
     font-size: 11px;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
   .urlbar {
     display: flex;
