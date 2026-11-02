@@ -174,3 +174,15 @@ El archivo contiene los TOML y carpetas de la colección; excluye `.harpoon`,
 adjuntos o certificados que deben trasladarse por separado. El contenido escrito
 directamente en los TOML, incluidas posibles credenciales, sí se comparte.
 La importación exige un directorio nuevo y no sobrescribe una colección existente.
+
+## Colecciones Postman
+
+En el menú de intercambio se puede elegir Postman v2.1. También se puede usar
+`harpoon postman-export coleccion.postman_collection.json` y
+`harpoon postman-import coleccion.postman_collection.json ./nueva-coleccion`.
+La importación crea una carpeta nueva. Se trasladan solicitudes, carpetas,
+variables de colección, cabeceras, parámetros, cuerpos compatibles y auth
+básica, bearer, digest o API key. Los scripts se conservan, pero hay que revisar
+su compatibilidad. Se muestran avisos para opciones no trasladadas: entre otras,
+OAuth 2, variables de carpeta, entornos, aserciones y archivos adjuntos. Las
+credenciales presentes en las solicitudes pueden quedar en el archivo exportado.

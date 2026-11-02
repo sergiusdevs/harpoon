@@ -12,6 +12,7 @@ pub mod collection;
 pub mod error;
 pub mod history;
 pub mod model;
+pub mod postman;
 pub mod share;
 pub mod vars;
 

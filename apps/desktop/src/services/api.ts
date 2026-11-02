@@ -30,6 +30,9 @@ export interface Api {
   exportHarpoon(root: string, name: string): Promise<string[] | null>;
   previewHarpoon(path: string): Promise<SharePreview>;
   importHarpoon(path: string, parent: string, name: string): Promise<Collection>;
+  exportPostman(root: string, name: string): Promise<string[] | null>;
+  previewPostman(path: string): Promise<SharePreview>;
+  importPostman(path: string, parent: string, name: string): Promise<Collection>;
   listCookies(root: string): Promise<StoredCookie[]>;
   addCookie(root: string, url: string, cookie: string): Promise<void>;
   removeCookie(root: string, domain: string, path: string, name: string): Promise<void>;
@@ -86,6 +89,13 @@ async function tauriApi(): Promise<Api> {
     },
     previewHarpoon: (path) => invoke<SharePreview>("preview_harpoon", { path }),
     importHarpoon: (path, parent, name) => col("import_harpoon", { path, parent, name }),
+    exportPostman: async (root, name) => {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({ title: "Exportar colección Postman", defaultPath: `${name}.postman_collection.json`, filters: [{ name: "Colección Postman", extensions: ["json"] }] });
+      return path ? invoke<string[]>("export_postman", { root, path }) : null;
+    },
+    previewPostman: (path) => invoke<SharePreview>("preview_postman", { path }),
+    importPostman: (path, parent, name) => col("import_postman", { path, parent, name }),
     listCookies: (root) => invoke<StoredCookie[]>("list_cookies", { root }),
     addCookie: (root, url, cookie) => invoke("add_cookie", { root, url, cookie }),
     removeCookie: (root, domain, path, name) => invoke("remove_cookie", { root, domain, path, name }),
@@ -299,6 +309,9 @@ function mockApi(): Api {
     exportHarpoon: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     previewHarpoon: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     importHarpoon: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    exportPostman: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    previewPostman: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    importPostman: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     listCookies: async () => structuredClone(mockCookies),
     addCookie: async (_root, url, cookie) => {
       const parsed = new URL(url), pair = cookie.split(";", 1)[0], at = pair.indexOf("=");

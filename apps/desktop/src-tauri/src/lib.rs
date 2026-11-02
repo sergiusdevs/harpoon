@@ -355,6 +355,39 @@ fn import_harpoon(path: PathBuf, parent: PathBuf, name: String) -> Result<Collec
 }
 
 #[tauri::command]
+fn export_postman(root: PathBuf, path: PathBuf) -> Result<Vec<String>, String> {
+    let col = load(&root)?;
+    let (data, warnings) = harpoon_core::postman::export(&col);
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(warnings)
+}
+
+#[tauri::command]
+fn preview_postman(path: PathBuf) -> Result<harpoon_core::postman::Preview, String> {
+    harpoon_core::postman::read(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_postman(path: PathBuf, parent: PathBuf, name: String) -> Result<CollectionDto, String> {
+    let mut parts = Path::new(&name).components();
+    if name.is_empty()
+        || !matches!(parts.next(), Some(std::path::Component::Normal(_)))
+        || parts.next().is_some()
+        || name.contains(['/', '\\'])
+    {
+        return Err("Nombre de carpeta no válido".into());
+    }
+    let collection = harpoon_core::postman::read(&path).map_err(|e| e.to_string())?;
+    harpoon_core::postman::import(&collection, &parent.join(name))
+        .map(Into::into)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn list_cookies(root: PathBuf) -> Result<Vec<harpoon_http::cookies::CookieInfo>, String> {
     let col = load(&root)?;
     harpoon_http::cookies::PersistentCookies::for_root(&col.root)
@@ -438,6 +471,9 @@ pub fn run() {
             export_harpoon,
             preview_harpoon,
             import_harpoon,
+            export_postman,
+            preview_postman,
+            import_postman,
             list_cookies,
             add_cookie,
             remove_cookie,

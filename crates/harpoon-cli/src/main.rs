@@ -41,6 +41,10 @@ enum Command {
     ShareExport { file: PathBuf },
     /// Importa un archivo Harpoon a un directorio nuevo.
     ShareImport { file: PathBuf, dir: PathBuf },
+    /// Exporta una colección Postman v2.1.
+    PostmanExport { file: PathBuf },
+    /// Importa una colección Postman v2.1 a un directorio nuevo.
+    PostmanImport { file: PathBuf, dir: PathBuf },
     /// Lista las solicitudes y entornos de la colección.
     List,
     /// Envía una solicitud y muestra la respuesta.
@@ -106,6 +110,25 @@ async fn run() -> anyhow::Result<ExitCode> {
                 col.root.display()
             );
             println!("Prueba: cd {} && harpoon list", dir.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::PostmanExport { file } => {
+            let col = open(cli.collection.as_deref())?;
+            let (document, warnings) = harpoon_core::postman::export(&col);
+            std::fs::write(&file, serde_json::to_vec_pretty(&document)?)?;
+            for warning in warnings {
+                eprintln!("Aviso: {warning}");
+            }
+            println!("Colección exportada a {}", file.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::PostmanImport { file, dir } => {
+            let preview = harpoon_core::postman::read(&file)?;
+            for warning in &preview.warnings {
+                eprintln!("Aviso: {warning}");
+            }
+            let col = harpoon_core::postman::import(&preview, &dir)?;
+            println!("Colección importada en {}", col.root.display());
             Ok(ExitCode::SUCCESS)
         }
         Command::ShareExport { file } => {

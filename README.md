@@ -66,6 +66,8 @@ harpoon run --data casos.csv   # una ejecución por fila; --iterations N para re
 harpoon run --bail --json      # para CI: se detiene al primer fallo, informe JSON
 harpoon share-export api.harpoon.json  # exporta la colección sin estado local
 harpoon share-import api.harpoon.json ./api-compartida
+harpoon postman-export api.postman_collection.json
+harpoon postman-import api.postman_collection.json ./api-importada
 ```
 
 Códigos de salida: `0` todo correcto, `1` alguna comprobación falló, `2` error de uso o de red.
