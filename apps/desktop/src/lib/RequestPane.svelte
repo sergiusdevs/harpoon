@@ -3,6 +3,7 @@
   import { METHODS, type Auth, type Body } from "./types";
   import CodeEditor from "./CodeEditor.svelte";
   import KeyValue from "./KeyValue.svelte";
+  import AuthForm from "./AuthForm.svelte";
 
   type Tab = "params" | "headers" | "body" | "auth" | "expect" | "docs";
   let tab = $state<Tab>("params");
@@ -34,15 +35,6 @@
     else if (req.body.type === "text") set("body", { type: "text", text });
   }
 
-  function setAuthKind(kind: Auth["type"]) {
-    const a: Auth =
-      kind === "basic" ? { type: "basic", username: "", password: "" }
-      : kind === "bearer" ? { type: "bearer", token: "" }
-      : kind === "api_key" ? { type: "api_key", key: "", value: "", in: "header" }
-      : { type: kind };
-    set("auth", a);
-  }
-
   function onKey(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
@@ -66,6 +58,7 @@
         class="url mono"
         value={req.url}
         oninput={(e) => set("url", e.currentTarget.value)}
+        title={req.name}
         onkeydown={(e) => e.key === "Enter" && store.send()}
         placeholder="{'{{base_url}}'}/ruta"
         spellcheck="false"
@@ -109,31 +102,11 @@
           {/if}
         </div>
       {:else if tab === "auth"}
-        <div class="form">
-          <label>
-            <span>Tipo</span>
-            <select value={req.auth.type} onchange={(e) => setAuthKind(e.currentTarget.value as Auth["type"])}>
-              <option value="inherit">Heredar de la colección</option>
-              <option value="none">Ninguna</option>
-              <option value="basic">Basic</option>
-              <option value="bearer">Bearer</option>
-              <option value="api_key">API key</option>
-            </select>
-          </label>
-          {#if req.auth.type === "basic"}
-            <label><span>Usuario</span><input class="mono" value={req.auth.username} oninput={(e) => set("auth", { type: "basic", username: e.currentTarget.value, password: (req.auth as { password: string }).password })} /></label>
-            <label><span>Contraseña</span><input class="mono" value={req.auth.password} oninput={(e) => set("auth", { type: "basic", username: (req.auth as { username: string }).username, password: e.currentTarget.value })} /></label>
-          {:else if req.auth.type === "bearer"}
-            <label><span>Token</span><input class="mono" value={req.auth.token} oninput={(e) => set("auth", { type: "bearer", token: e.currentTarget.value })} placeholder="{'{{token}}'}" /></label>
-          {:else if req.auth.type === "api_key"}
-            {@const a = req.auth}
-            <label><span>Clave</span><input class="mono" value={a.key} oninput={(e) => set("auth", { ...a, key: e.currentTarget.value })} /></label>
-            <label><span>Valor</span><input class="mono" value={a.value} oninput={(e) => set("auth", { ...a, value: e.currentTarget.value })} /></label>
-            <label><span>Enviar en</span><select value={a.in} onchange={(e) => set("auth", { ...a, in: e.currentTarget.value as "header" | "query" })}><option value="header">cabecera</option><option value="query">query</option></select></label>
-          {:else if req.auth.type === "inherit"}
-            <p class="muted hint">Usa la auth definida en <code>harpoon.toml</code>{#if store.collection} (<code>{store.collection.meta.auth.type}</code>){/if}.</p>
-          {/if}
-        </div>
+        <AuthForm
+          auth={req.auth}
+          onchange={(a: Auth) => set("auth", a)}
+          inheritHint={`Usa la auth definida en harpoon.toml (${store.collection?.meta.auth.type ?? "none"}).`}
+        />
       {:else if tab === "expect"}
         <div class="form">
           <label><span>Status</span><input class="mono" type="number" value={req.expect.status ?? ""} oninput={(e) => set("expect", { ...req.expect, status: e.currentTarget.value ? Number(e.currentTarget.value) : undefined })} placeholder="200" /></label>
@@ -246,8 +219,7 @@
     color: var(--text-muted);
     font-size: 12px;
   }
-  .form input,
-  .form select {
+  .form input {
     font-size: 12px;
   }
   .sub {
@@ -260,12 +232,5 @@
   .hint {
     font-size: 12px;
     margin: 4px 0;
-  }
-  code {
-    font-family: var(--mono);
-    font-size: 11.5px;
-    background: var(--bg-active);
-    padding: 1px 5px;
-    border-radius: 4px;
   }
 </style>

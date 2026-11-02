@@ -6,6 +6,9 @@
   import RequestPane from "./lib/RequestPane.svelte";
   import ResponsePane from "./lib/ResponsePane.svelte";
   import Splitter from "./lib/Splitter.svelte";
+  import Dialog from "./lib/Dialog.svelte";
+  import EnvEditor from "./lib/EnvEditor.svelte";
+  import CollectionSettings from "./lib/CollectionSettings.svelte";
 
   let sidebarW = $state(250);
   let requestW = $state(0.5); // fracción del área de trabajo
@@ -41,9 +44,20 @@
       {#if store.collection}
         <label class="env">
           <span class="muted">Entorno</span>
-          <select value={store.env ?? ""} onchange={(e) => (store.env = e.currentTarget.value || null)}>
+          <select
+            value={store.env ?? ""}
+            onchange={(e) => {
+              const v = e.currentTarget.value;
+              if (v === "__edit") {
+                e.currentTarget.value = store.env ?? "";
+                store.modal = "environments";
+              } else store.env = v || null;
+            }}
+          >
             <option value="">— ninguno —</option>
-            {#each store.collection.environments as env}<option value={env}>{env}</option>{/each}
+            {#each Object.keys(store.collection.environments) as env}<option value={env}>{env}</option>{/each}
+            <option disabled>──────</option>
+            <option value="__edit">Editar entornos…</option>
           </select>
         </label>
       {/if}
@@ -64,6 +78,13 @@
     </footer>
   </div>
 </div>
+
+<Dialog />
+{#if store.modal === "environments" && store.collection}
+  <EnvEditor />
+{:else if store.modal === "settings" && store.collection}
+  <CollectionSettings />
+{/if}
 
 <style>
   .app {

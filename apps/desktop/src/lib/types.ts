@@ -51,10 +51,15 @@ export interface CollectionMeta {
   settings: { timeout_ms: number; follow_redirects: boolean; proxy?: string; insecure: boolean };
 }
 
+export interface Environment {
+  vars: Record<string, string>;
+  secrets: string[];
+}
+
 export interface Collection {
   root: string;
   meta: CollectionMeta;
-  environments: string[];
+  environments: Record<string, Environment>;
   requests: Record<string, Request>;
 }
 
@@ -119,5 +124,14 @@ export function normalizeRequest(r: Partial<Request> & { name: string; url: stri
 export function normalizeCollection(c: Collection): Collection {
   const requests: Record<string, Request> = {};
   for (const [k, r] of Object.entries(c.requests)) requests[k] = normalizeRequest(r);
-  return { ...c, requests };
+  const environments: Record<string, Environment> = {};
+  for (const [k, e] of Object.entries(c.environments ?? {}))
+    environments[k] = { vars: e?.vars ?? {}, secrets: e?.secrets ?? [] };
+  const meta: CollectionMeta = {
+    ...c.meta,
+    vars: c.meta.vars ?? {},
+    auth: c.meta.auth ?? { type: "none" },
+    settings: Object.assign({ timeout_ms: 30000, follow_redirects: true, insecure: false }, c.meta.settings ?? {}),
+  };
+  return { ...c, meta, environments, requests };
 }

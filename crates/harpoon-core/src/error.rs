@@ -28,4 +28,10 @@ pub enum Error {
 
     #[error("entorno `{0}` no existe")]
     UnknownEnvironment(String),
+
+    #[error("nombre no válido: `{0}`")]
+    InvalidName(String),
+
+    #[error("ya existe: {0}")]
+    AlreadyExists(PathBuf),
 }
