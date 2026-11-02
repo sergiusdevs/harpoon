@@ -2,7 +2,7 @@
 // normal (desarrollo de la UI, capturas) usa un mock con la colección de ejemplo.
 
 import type { Collection, Exchange, Request } from "./types";
-import { emptyRequest } from "./types";
+import { emptyRequest, normalizeCollection } from "./types";
 
 export interface Api {
   openCollection(path: string): Promise<Collection>;
@@ -18,8 +18,8 @@ async function tauriApi(): Promise<Api> {
   const { invoke } = await import("@tauri-apps/api/core");
   const { open } = await import("@tauri-apps/plugin-dialog");
   return {
-    openCollection: (path) => invoke<Collection>("open_collection", { path }),
-    initCollection: (path, name) => invoke<Collection>("init_collection", { path, name }),
+    openCollection: async (path) => normalizeCollection(await invoke<Collection>("open_collection", { path })),
+    initCollection: async (path, name) => normalizeCollection(await invoke<Collection>("init_collection", { path, name })),
     pickFolder: async () => {
       const r = await open({ directory: true, multiple: false, title: "Abrir colección" });
       return typeof r === "string" ? r : null;
