@@ -44,6 +44,8 @@ pub enum Error {
     Multipart(String),
     #[error("GraphQL: {0}")]
     Graphql(String),
+    #[error("flujo: {0}")]
+    Stream(String),
     #[error("fallo de red: {}", describe(.0))]
     Network(reqwest::Error),
     #[error("tiempo agotado tras {0:?}")]
@@ -408,6 +410,33 @@ pub struct Client {
 }
 
 impl Client {
+    /// Abre un flujo SSE sin aplicar el límite de tiempo habitual a toda la conexión.
+    pub async fn open_sse(&self, prepared: &Prepared) -> Result<reqwest::Response> {
+        if prepared.pending_auth.is_some() {
+            return Err(Error::Stream(
+                "SSE todavía no admite OAuth2 ni Digest".into(),
+            ));
+        }
+        let mut request = self
+            .inner
+            .get(&prepared.url)
+            .timeout(Duration::from_secs(24 * 60 * 60))
+            .query(&prepared.query.iter().collect::<Vec<_>>());
+        let mut has_accept = false;
+        for (name, value) in &prepared.headers {
+            has_accept |= name.eq_ignore_ascii_case("accept");
+            request = request.header(
+                reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|_| Error::Header(name.clone()))?,
+                reqwest::header::HeaderValue::from_str(value)
+                    .map_err(|_| Error::Header(name.clone()))?,
+            );
+        }
+        if !has_accept {
+            request = request.header("Accept", "text/event-stream");
+        }
+        request.send().await.map_err(Error::Network)
+    }
     /// Cliente a partir de los ajustes, con rutas de certificados relativas a `root`
     /// y caché de tokens en `root/.harpoon/tokens.toml`.
     pub fn for_collection(collection: &Collection) -> Result<Self> {

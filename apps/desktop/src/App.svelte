@@ -17,6 +17,7 @@
   import ShareCollection from "./components/collection/ShareCollection.svelte";
   import CollectionRunner from "./components/collection/CollectionRunner.svelte";
   import CollectionSearch from "./components/collection/CollectionSearch.svelte";
+  import LiveConnection from "./components/request/LiveConnection.svelte";
 
   let sidebarW = $state(250);
 
@@ -73,7 +74,9 @@
 </div>
 
 <Dialog />
-{#if store.modal === "search" && store.collection}
+{#if store.modal === "stream" && store.collection && store.draft}
+  <LiveConnection />
+{:else if store.modal === "search" && store.collection}
   <CollectionSearch />
 {:else if store.modal === "runner" && store.collection}
   <CollectionRunner />

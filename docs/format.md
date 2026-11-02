@@ -210,3 +210,14 @@ query = "query GetUser($id: ID!) { user(id: $id) { name } }"
 variables = '{ "id": "{{user_id}}" }'
 operation_name = "GetUser"
 ```
+
+## WebSocket y SSE
+
+El botón **Tiempo real** abre una conexión usando la URL, parámetros,
+cabeceras, variables y autenticación compatible de la solicitud actual.
+WebSocket permite enviar y recibir texto; los mensajes binarios se indican por
+su tamaño. SSE muestra eventos e identificadores sin reconexión automática.
+Los scripts no se ejecutan en estas conexiones. OAuth2 y Digest no están
+disponibles para tiempo real; WebSocket tampoco admite proxy o TLS personalizado.
+SSE usa los ajustes HTTP de la colección y tiene un límite de conexión de 24 horas.
+La vista conserva hasta 200 mensajes, con contenido largo recortado visualmente.

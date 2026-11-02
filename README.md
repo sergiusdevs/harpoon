@@ -35,7 +35,8 @@ Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
 | Ejecutar colecciones o carpetas en la app y consultar sus fallos | ✅ |
 | Búsqueda global en nombres, URL, cabeceras, cuerpos y scripts de solicitudes | ✅ |
 | GraphQL por HTTP: consulta, variables JSON y nombre de operación | ✅ |
-| WebSocket, SSE, gRPC | ⏳ fase 5 |
+| WebSocket y SSE: conexiones en tiempo real desde la app | ✅ (con limitaciones) |
+| gRPC | ⏳ fase 5 |
 | OpenAPI import/export, docs HTML, servidor mock | ⏳ fase 6 |
 | Distribución (`.dmg`, Homebrew, winget) | ⏸ pospuesta |
 

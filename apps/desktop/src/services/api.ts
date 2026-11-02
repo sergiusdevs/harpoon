@@ -8,6 +8,7 @@ export { folderChain } from "../domain/paths";
 import { emptyRequest, normalizeCollection } from "../domain/types";
 
 export interface SharePreview { name: string; warnings: string[] }
+export interface StreamEvent { kind: "open" | "closed" | "error" | "message" | "sent"; data: string; event: string; id: string }
 
 export interface Api {
   openCollection(path: string): Promise<Collection>;
@@ -35,6 +36,9 @@ export interface Api {
   importPostman(path: string, parent: string, name: string): Promise<Collection>;
   previewOpenapi(path: string): Promise<SharePreview>;
   importOpenapi(path: string, parent: string, name: string): Promise<Collection>;
+  startStream(root: string, key: string, env: string | null, request: Request, protocol: "websocket" | "sse", id: string, onEvent: (event: StreamEvent) => void): Promise<void>;
+  sendStream(id: string, data: string): Promise<void>;
+  stopStream(id: string): Promise<void>;
   listCookies(root: string): Promise<StoredCookie[]>;
   addCookie(root: string, url: string, cookie: string): Promise<void>;
   removeCookie(root: string, domain: string, path: string, name: string): Promise<void>;
@@ -49,7 +53,7 @@ export interface Api {
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 async function tauriApi(): Promise<Api> {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke, Channel } = await import("@tauri-apps/api/core");
   const { open } = await import("@tauri-apps/plugin-dialog");
   const col = async (cmd: string, args: Record<string, unknown>) =>
     normalizeCollection(await invoke<Collection>(cmd, args));
@@ -100,6 +104,13 @@ async function tauriApi(): Promise<Api> {
     importPostman: (path, parent, name) => col("import_postman", { path, parent, name }),
     previewOpenapi: (path) => invoke<SharePreview>("preview_openapi", { path }),
     importOpenapi: (path, parent, name) => col("import_openapi", { path, parent, name }),
+    startStream: (root, key, env, request, protocol, id, onEvent) => {
+      const channel = new Channel<StreamEvent>();
+      channel.onmessage = onEvent;
+      return invoke("start_stream", { root, key, env, request, protocol, id, channel });
+    },
+    sendStream: (id, data) => invoke("stream_send", { id, data }),
+    stopStream: (id) => invoke("stop_stream", { id }),
     listCookies: (root) => invoke<StoredCookie[]>("list_cookies", { root }),
     addCookie: (root, url, cookie) => invoke("add_cookie", { root, url, cookie }),
     removeCookie: (root, domain, path, name) => invoke("remove_cookie", { root, domain, path, name }),
@@ -318,6 +329,9 @@ function mockApi(): Api {
     importPostman: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     previewOpenapi: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     importOpenapi: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    startStream: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    sendStream: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    stopStream: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     listCookies: async () => structuredClone(mockCookies),
     addCookie: async (_root, url, cookie) => {
       const parsed = new URL(url), pair = cookie.split(";", 1)[0], at = pair.indexOf("=");

@@ -24,6 +24,11 @@ indexmap.workspace = true
 tauri = { version = "2.12", features = [] }
 tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3.34", features = ["sink"] }
+tokio = { workspace = true, features = ["sync", "net"] }
+url = "2"
+eventsource-stream = "0.2.3"
 
 [lints]
 workspace = true

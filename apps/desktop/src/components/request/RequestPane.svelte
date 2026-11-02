@@ -195,6 +195,7 @@
         </button>
       </div>
       <button class="btn variables-button" onclick={() => (store.modal = "variables")} title="Ver variables de esta solicitud">Variables</button>
+      <button class="btn variables-button" onclick={() => (store.modal = "stream")} title="Conectar por WebSocket o SSE">Tiempo real</button>
       <button class="btn primary send" onclick={() => store.send()} disabled={store.sending}>
         {#if store.sending}<span class="pulse">Enviando</span>{:else}Enviar{/if}
       </button>

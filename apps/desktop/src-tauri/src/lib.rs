@@ -5,6 +5,8 @@
 // Los comandos de Tauri reciben sus argumentos por valor.
 #![allow(clippy::needless_pass_by_value)]
 
+mod stream;
+
 use std::path::{Path, PathBuf};
 
 use harpoon_core::{Collection, Environment, Request, model::CollectionMeta};
@@ -470,9 +472,13 @@ fn save_runtime_vars(root: PathBuf, vars: IndexMap<String, String>) -> Result<()
 /// Si la ventana no puede crearse (webview del sistema ausente).
 pub fn run() {
     tauri::Builder::default()
+        .manage(stream::Sessions::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            stream::start_stream,
+            stream::stream_send,
+            stream::stop_stream,
             open_collection,
             init_collection,
             save_request,
