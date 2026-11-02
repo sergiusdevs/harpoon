@@ -278,6 +278,53 @@ class Store {
     };
   }
 
+  /** Mueve una solicitud o carpeta a otra carpeta (arrastrar y soltar). */
+  async moveInto(kind: "request" | "folder", path: string, targetFolder: string) {
+    if (!this.collection) return;
+    const name = path.split("/").pop()!;
+    const target = targetFolder ? `${targetFolder}/${name}` : name;
+    if (target === path) return;
+    if (kind === "folder" && (targetFolder === path || targetFolder.startsWith(path + "/"))) {
+      this.status = { kind: "err", text: "No se puede mover una carpeta dentro de sí misma" };
+      return;
+    }
+    await this.run(async () => {
+      const col =
+        kind === "request"
+          ? await (await api).renameRequest(this.collection!.root, path, target)
+          : await (await api).renameFolder(this.collection!.root, path, target);
+      const sel =
+        kind === "request" && this.selected === path
+          ? target
+          : kind === "folder" && this.selected?.startsWith(path + "/")
+            ? target + this.selected.slice(path.length)
+            : undefined;
+      await this.adopt(col, { select: sel });
+      this.status = { kind: "ok", text: `Movido a ${targetFolder || "la raíz"}` };
+    });
+  }
+
+  /** Crea un entorno vacío y lo selecciona (botón + junto al selector). */
+  quickNewEnvironment() {
+    this.dialog = {
+      kind: "prompt",
+      title: "Nuevo entorno",
+      label: "Nombre (dev, staging, prod…)",
+      value: "",
+      placeholder: "staging",
+      ok: "Crear",
+      onOk: async (name) => {
+        const n = slug(name);
+        if (!n) throw "El nombre no puede estar vacío";
+        if (this.collection?.environments[n]) throw `Ya existe el entorno ${n}`;
+        const base = this.env ? this.collection?.environments[this.env]?.vars ?? {} : {};
+        await this.saveEnvironment(n, { vars: { ...base }, secrets: [] });
+        this.env = n;
+        this.modal = "environments";
+      },
+    };
+  }
+
   // ---------- entornos y ajustes ----------
 
   async saveEnvironment(name: string, env: Environment) {

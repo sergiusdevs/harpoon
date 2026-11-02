@@ -3,6 +3,7 @@
   import ContextMenu, { type Item } from "./ContextMenu.svelte";
 
   let filter = $state("");
+  let filterInput = $state<HTMLInputElement | null>(null);
   let newName = $state("");
   $effect(() => {
     if (store.pendingInit) newName = basename(store.pendingInit);
@@ -45,14 +46,64 @@
   });
 
   let collapsed = $state<Record<string, boolean>>({});
-  let menu = $state<{ x: number; y: number; items: Item[] } | null>(null);
 
+  /** Lista plana de los nodos visibles, para la navegación con teclado. */
+  const visible = $derived.by(() => {
+    const out: Node[] = [];
+    const walk = (list: Node[]) => {
+      for (const n of list) {
+        out.push(n);
+        if (!n.key && !collapsed[n.path]) walk(n.children);
+      }
+    };
+    walk(tree.children);
+    return out;
+  });
+
+  let focused = $state<string | null>(null); // path del nodo con foco de teclado
+  let treeEl = $state<HTMLElement | null>(null);
+
+  function onTreeKey(e: KeyboardEvent) {
+    if (!visible.length) return;
+    const idx = Math.max(0, visible.findIndex((n) => n.path === focused));
+    const cur = visible[idx];
+    const go = (i: number) => {
+      const n = visible[Math.min(visible.length - 1, Math.max(0, i))];
+      focused = n.path;
+      (treeEl?.querySelector(`[data-path="${CSS.escape(n.path)}"]`) as HTMLElement | null)?.focus();
+    };
+    switch (e.key) {
+      case "ArrowDown": e.preventDefault(); go(idx + 1); break;
+      case "ArrowUp": e.preventDefault(); go(idx - 1); break;
+      case "Home": e.preventDefault(); go(0); break;
+      case "End": e.preventDefault(); go(visible.length - 1); break;
+      case "ArrowRight":
+        if (cur && !cur.key) { e.preventDefault(); collapsed[cur.path] = false; }
+        break;
+      case "ArrowLeft":
+        if (cur && !cur.key) { e.preventDefault(); collapsed[cur.path] = true; }
+        break;
+      case "Enter":
+      case " ":
+        if (cur) { e.preventDefault(); if (cur.key) store.select(cur.key); else collapsed[cur.path] = !collapsed[cur.path]; }
+        break;
+      case "Delete":
+      case "Backspace":
+        if (cur && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (cur.key) store.deleteRequest(cur.key); else store.deleteFolder(cur.path); }
+        break;
+      case "F2":
+        if (cur) { e.preventDefault(); if (cur.key) store.renameRequest(cur.key); else store.renameFolder(cur.path); }
+        break;
+    }
+  }
+
+  // ---- menú contextual
+  let menu = $state<{ x: number; y: number; items: Item[] } | null>(null);
   function openMenu(e: MouseEvent, items: Item[]) {
     e.preventDefault();
     e.stopPropagation();
     menu = { x: e.clientX, y: e.clientY, items };
   }
-
   const requestMenu = (key: string): Item[] => [
     { label: "Renombrar / mover…", action: () => store.renameRequest(key) },
     { label: "Duplicar…", action: () => store.duplicate(key) },
@@ -68,46 +119,121 @@
     { label: "Nueva solicitud…", action: () => store.newRequest("") },
     { label: "Nueva carpeta…", action: () => store.newFolder("") },
   ];
+
+  // ---- arrastrar y soltar
+  let dragging = $state<{ kind: "request" | "folder"; path: string } | null>(null);
+  let dropOver = $state<string | null>(null); // "" = raíz
+
+  function dragStart(e: DragEvent, kind: "request" | "folder", path: string) {
+    dragging = { kind, path };
+    e.dataTransfer?.setData("text/plain", `${kind}:${path}`);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  }
+  function canDrop(target: string): boolean {
+    if (!dragging) return false;
+    const parent = dragging.path.includes("/") ? dragging.path.slice(0, dragging.path.lastIndexOf("/")) : "";
+    if (parent === target) return false; // ya está ahí
+    if (dragging.kind === "folder" && (target === dragging.path || target.startsWith(dragging.path + "/"))) return false;
+    return true;
+  }
+  function dragOver(e: DragEvent, target: string) {
+    if (!canDrop(target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    dropOver = target;
+  }
+  async function drop(e: DragEvent, target: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const d = dragging;
+    const ok = !!d && canDrop(target);
+    dragging = null;
+    dropOver = null;
+    if (d && ok) await store.moveInto(d.kind, d.path, target);
+  }
+  function dragEnd() {
+    dragging = null;
+    dropOver = null;
+  }
+
+  function onGlobalKey(e: KeyboardEvent) {
+    if (!(e.metaKey || e.ctrlKey) || !store.collection) return;
+    if (e.key === "k") { e.preventDefault(); filterInput?.focus(); filterInput?.select(); }
+    else if (e.key === "n" && !e.shiftKey) { e.preventDefault(); store.newRequest(""); }
+    else if (e.key === "n" && e.shiftKey) { e.preventDefault(); store.newFolder(""); }
+    else if (e.key === "e") { e.preventDefault(); store.modal = "environments"; }
+    else if (e.key === ",") { e.preventDefault(); store.modal = "settings"; }
+  }
 </script>
+
+<svelte:window onkeydown={onGlobalKey} />
 
 {#snippet nodes(list: Node[], depth: number)}
   {#each list as n (n.path + (n.key ? ":r" : ":f"))}
     {#if n.key}
       {@const req = store.collection!.requests[n.key]}
-      <button
+      <div
         class="item"
         class:active={store.selected === n.key}
+        class:dragging={dragging?.path === n.key}
         style="padding-left: {12 + depth * 14}px"
-        onclick={() => store.select(n.key!)}
+        role="treeitem"
+        tabindex={focused === n.path || (!focused && store.selected === n.key) ? 0 : -1}
+        aria-selected={store.selected === n.key}
+        aria-level={depth + 1}
+        data-path={n.path}
+        draggable="true"
+        onclick={() => { focused = n.path; store.select(n.key!); }}
+        onkeydown={() => {}}
+        onfocus={() => (focused = n.path)}
         oncontextmenu={(e) => openMenu(e, requestMenu(n.key!))}
+        ondragstart={(e) => dragStart(e, "request", n.key!)}
+        ondragend={dragEnd}
         title={req.name}
       >
         <span class="method {req.method}">{req.method}</span>
         <span class="name">{n.name}</span>
-        {#if store.selected === n.key && store.dirty}<span class="dot" title="Sin guardar"></span>{/if}
-      </button>
+        {#if store.selected === n.key && store.dirty}<span class="dot" title="Sin guardar" aria-label="sin guardar"></span>{/if}
+      </div>
     {:else}
-      <button
+      <div
         class="folder"
+        class:drop-target={dropOver === n.path}
+        class:dragging={dragging?.path === n.path && dragging.kind === "folder"}
         style="padding-left: {12 + depth * 14}px"
-        onclick={() => (collapsed[n.path] = !collapsed[n.path])}
+        role="treeitem"
+        tabindex={focused === n.path ? 0 : -1}
+        aria-expanded={!collapsed[n.path]}
+        aria-selected={false}
+        aria-level={depth + 1}
+        data-path={n.path}
+        draggable="true"
+        onclick={() => { focused = n.path; collapsed[n.path] = !collapsed[n.path]; }}
+        onkeydown={() => {}}
+        onfocus={() => (focused = n.path)}
         oncontextmenu={(e) => openMenu(e, folderMenu(n.path))}
+        ondragstart={(e) => dragStart(e, "folder", n.path)}
+        ondragend={dragEnd}
+        ondragover={(e) => dragOver(e, n.path)}
+        ondragleave={() => dropOver === n.path && (dropOver = null)}
+        ondrop={(e) => drop(e, n.path)}
       >
-        <span class="chev" class:closed={collapsed[n.path]}>▾</span>
+        <span class="chev" class:closed={collapsed[n.path]} aria-hidden="true">▾</span>
         <span class="fname">{n.name}</span>
         <span class="n muted">{countRequests(n)}</span>
-      </button>
+      </div>
       {#if !collapsed[n.path]}
         {#if n.children.length === 0}
-          <div class="empty-folder muted" style="padding-left: {26 + (depth + 1) * 14}px">vacía</div>
+          <div class="empty-folder muted" style="padding-left: {26 + (depth + 1) * 14}px">vacía · arrastra aquí o clic derecho</div>
         {/if}
-        {@render nodes(n.children, depth + 1)}
+        <div role="group">{@render nodes(n.children, depth + 1)}</div>
       {/if}
     {/if}
   {/each}
 {/snippet}
 
-<aside class="sidebar">
+<aside class="sidebar" aria-label="Colección">
   <div class="head">
     <div class="brand">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -117,14 +243,14 @@
       <span>Harpoon</span>
     </div>
     <div class="actions">
-      <button class="btn icon" title="Abrir colección" onclick={() => store.pickAndOpen()}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+      <button class="btn icon" title="Abrir colección" aria-label="Abrir colección" onclick={() => store.pickAndOpen()}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
       </button>
-      <button class="btn icon" title="Cambiar tema" onclick={() => store.toggleTheme()}>
+      <button class="btn icon" title="Cambiar tema" aria-label="Cambiar tema" onclick={() => store.toggleTheme()}>
         {#if store.theme === "dark"}
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
         {:else}
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
         {/if}
       </button>
     </div>
@@ -147,26 +273,41 @@
     <div class="collection">
       <div class="col-row">
         <div class="col-name" title={store.collection.root}>{store.collection.meta.name}</div>
-        <button class="btn icon" title="Ajustes de la colección" onclick={() => (store.modal = "settings")}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+        <button class="btn icon" title="Ajustes de la colección (⌘,)" aria-label="Ajustes de la colección" onclick={() => (store.modal = "settings")}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
         </button>
       </div>
     </div>
     <div class="toolbar">
-      <input placeholder="Filtrar…" bind:value={filter} spellcheck="false" />
-      <button class="btn icon" title="Nueva solicitud" onclick={() => store.newRequest("")}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14" /></svg>
+      <input bind:this={filterInput} placeholder="Filtrar  ⌘K" bind:value={filter} spellcheck="false" aria-label="Filtrar solicitudes" />
+      <button class="btn icon" title="Nueva solicitud (⌘N)" aria-label="Nueva solicitud" onclick={() => store.newRequest("")}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
       </button>
-      <button class="btn icon" title="Nueva carpeta" onclick={() => store.newFolder("")}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M12 11v5M9.5 13.5h5" /></svg>
+      <button class="btn icon" title="Nueva carpeta (⇧⌘N)" aria-label="Nueva carpeta" onclick={() => store.newFolder("")}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M12 11v5M9.5 13.5h5" /></svg>
       </button>
     </div>
-    <nav class="tree" oncontextmenu={(e) => openMenu(e, rootMenu())}>
+    <div
+      class="tree"
+      class:drop-target={dropOver === ""}
+      role="tree"
+      tabindex="-1"
+      aria-label="Solicitudes"
+      bind:this={treeEl}
+      onkeydown={onTreeKey}
+      oncontextmenu={(e) => openMenu(e, rootMenu())}
+      ondragover={(e) => dragOver(e, "")}
+      ondragleave={(e) => { if (e.currentTarget === e.target) dropOver = null; }}
+      ondrop={(e) => drop(e, "")}
+    >
       {@render nodes(tree.children, 0)}
       {#if tree.children.length === 0}
         <p class="muted small pad">Sin solicitudes. Pulsa + o clic derecho para crear una.</p>
       {/if}
-    </nav>
+      {#if dragging}
+        <div class="root-drop muted">Suelta aquí para mover a la raíz</div>
+      {/if}
+    </div>
   {:else}
     <div class="empty">
       <p class="muted">Ninguna colección abierta.</p>
@@ -194,6 +335,7 @@
     height: 100%;
     background: var(--bg-panel);
     min-width: 0;
+    border-right: 1px solid var(--border);
   }
   .head {
     height: var(--titlebar);
@@ -203,6 +345,7 @@
     padding: 0 10px 0 78px; /* hueco para los semáforos de macOS */
     -webkit-app-region: drag;
     flex: 0 0 auto;
+    border-bottom: 1px solid var(--border);
   }
   .brand {
     display: flex;
@@ -217,7 +360,7 @@
     -webkit-app-region: no-drag;
   }
   .collection {
-    padding: 6px 8px 0 12px;
+    padding: 8px 8px 0 12px;
   }
   .col-row {
     display: flex;
@@ -236,6 +379,7 @@
     gap: 2px;
     align-items: center;
     padding: 6px 8px 6px 10px;
+    border-bottom: 1px solid var(--border);
   }
   .toolbar input {
     flex: 1;
@@ -246,7 +390,8 @@
   .tree {
     flex: 1;
     overflow: auto;
-    padding: 2px 6px 12px;
+    padding: 4px 6px 12px;
+    outline: none;
   }
   .folder,
   .item {
@@ -259,6 +404,8 @@
     border-radius: var(--radius);
     color: var(--text);
     transition: background var(--t);
+    cursor: default;
+    user-select: none;
   }
   .folder {
     color: var(--text-muted);
@@ -283,6 +430,7 @@
   }
   .item.active {
     background: var(--accent-soft);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .chev {
     display: inline-block;
@@ -313,6 +461,14 @@
     font-size: 11px;
     font-style: italic;
     padding: 3px 0;
+  }
+  .root-drop {
+    margin: 10px 6px 0;
+    padding: 10px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    text-align: center;
+    font-size: 11.5px;
   }
   .init {
     padding: 14px;

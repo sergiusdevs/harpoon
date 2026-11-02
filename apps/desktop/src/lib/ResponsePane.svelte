@@ -2,7 +2,7 @@
   import { store, fmtSize } from "./store.svelte";
   import CodeEditor from "./CodeEditor.svelte";
 
-  type Tab = "body" | "headers" | "tests" | "console" | "sent";
+  type Tab = "body" | "preview" | "headers" | "tests" | "console" | "sent";
   let tab = $state<Tab>("body");
 
   const x = $derived(store.exchange);
@@ -18,6 +18,18 @@
   });
   const checks = $derived(x ? [...x.assertions, ...x.tests] : []);
   const failed = $derived(checks.filter((a) => !a.passed).length);
+  const isHtml = $derived(!!x && /text\/html/i.test(x.response.headers["content-type"] ?? ""));
+  const isImage = $derived(!!x && /^image\//i.test(x.response.headers["content-type"] ?? ""));
+  let copied = $state(false);
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+      setTimeout(() => (copied = false), 1200);
+    } catch {
+      /* portapapeles no disponible */
+    }
+  }
 </script>
 
 <section class="pane">
@@ -42,16 +54,28 @@
         </span>
       {/if}
     </div>
-    <div class="tabs">
-      <button class="tab" class:active={tab === "body"} onclick={() => (tab = "body")}>Respuesta</button>
-      <button class="tab" class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers <span class="count">{Object.keys(x.response.headers).length}</span></button>
-      <button class="tab" class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if checks.length}<span class="count" class:bad={failed > 0}>{checks.length}</span>{/if}</button>
-      <button class="tab" class:active={tab === "console"} onclick={() => (tab = "console")}>Consola {#if x.logs.length}<span class="count">{x.logs.length}</span>{/if}</button>
-      <button class="tab" class:active={tab === "sent"} onclick={() => (tab = "sent")}>Enviado</button>
+    <div class="tabs" role="tablist" aria-label="Secciones de la respuesta">
+      <button class="tab" role="tab" aria-selected={tab === "body"} class:active={tab === "body"} onclick={() => (tab = "body")}>Respuesta</button>
+      {#if isHtml}
+        <button class="tab" role="tab" aria-selected={tab === "preview"} class:active={tab === "preview"} onclick={() => (tab = "preview")}>Vista</button>
+      {/if}
+      <button class="tab" role="tab" aria-selected={tab === "headers"} class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers <span class="count">{Object.keys(x.response.headers).length}</span></button>
+      <button class="tab" role="tab" aria-selected={tab === "tests"} class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if checks.length}<span class="count" class:bad={failed > 0}>{checks.length}</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "console"} class:active={tab === "console"} onclick={() => (tab = "console")}>Consola {#if x.logs.length}<span class="count">{x.logs.length}</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "sent"} class:active={tab === "sent"} onclick={() => (tab = "sent")}>Enviado</button>
     </div>
     <div class="content">
       {#if tab === "body"}
-        <CodeEditor value={pretty} language={x.response.is_json ? "json" : "text"} readonly />
+        <div class="body-tools">
+          <button class="btn small" onclick={() => copy(pretty)}>{copied ? "Copiado ✓" : "Copiar"}</button>
+          {#if isImage}<span class="muted hint">imagen de {fmtSize(x.response.size)} (vista no disponible todavía)</span>{/if}
+        </div>
+        <div class="body-editor">
+          <CodeEditor value={pretty} language={x.response.is_json ? "json" : "text"} readonly />
+        </div>
+      {:else if tab === "preview"}
+        <!-- sandbox vacío: sin scripts, sin same-origin, sin formularios; nada sale de la app -->
+        <iframe class="preview" title="Vista previa HTML" sandbox="" srcdoc={x.response.body}></iframe>
       {:else if tab === "headers"}
         <table class="hdrs">
           <tbody>
@@ -121,6 +145,7 @@
     height: 100%;
     min-width: 0;
     background: var(--bg-panel);
+    border-left: 1px solid var(--border);
   }
   .summary {
     display: flex;
@@ -173,6 +198,28 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .body-tools {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 10px 0;
+  }
+  .body-editor {
+    flex: 1;
+    min-height: 0;
+  }
+  .hint {
+    font-size: 11.5px;
+  }
+  .preview {
+    flex: 1;
+    border: 0;
+    background: #fff;
+    width: 100%;
+    height: 100%;
   }
   .hdrs {
     border-collapse: collapse;

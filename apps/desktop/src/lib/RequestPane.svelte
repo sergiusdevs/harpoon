@@ -29,6 +29,20 @@
     set("body", next);
   }
 
+  let jsonError = $state<string | null>(null);
+  $effect(() => {
+    if (bodyKind !== "json" || !bodyText.trim()) { jsonError = null; return; }
+    try { JSON.parse(bodyText); jsonError = null; } catch (e) { jsonError = String(e).replace("SyntaxError: ", ""); }
+  });
+
+  function formatJson() {
+    try {
+      setBodyText(JSON.stringify(JSON.parse(bodyText), null, 2));
+    } catch {
+      /* el aviso ya se muestra */
+    }
+  }
+
   function setBodyText(text: string) {
     if (!req) return;
     if (req.body.type === "json") set("body", { type: "json", json: text });
@@ -49,7 +63,18 @@
 <svelte:window onkeydown={onKey} />
 
 {#if req}
-  <section class="pane">
+  <section class="pane" aria-label="Solicitud">
+    <div class="namebar">
+      <input
+        class="name-input"
+        value={req.name}
+        oninput={(e) => set("name", e.currentTarget.value)}
+        placeholder="Nombre de la solicitud"
+        aria-label="Nombre de la solicitud"
+        spellcheck="false"
+      />
+      <span class="key mono muted" title="Archivo">{store.selected}.toml</span>
+    </div>
     <div class="urlbar">
       <select class="method-select method {req.method}" value={req.method} onchange={(e) => set("method", e.currentTarget.value as typeof req.method)}>
         {#each METHODS as m}<option value={m}>{m}</option>{/each}
@@ -70,37 +95,46 @@
       <button class="btn" onclick={() => store.save()} disabled={!store.dirty} title="Guardar (⌘S)">Guardar</button>
     </div>
 
-    <div class="tabs">
-      <button class="tab" class:active={tab === "params"} onclick={() => (tab = "params")}>Params {#if count(req.query)}<span class="count">{count(req.query)}</span>{/if}</button>
-      <button class="tab" class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers {#if count(req.headers)}<span class="count">{count(req.headers)}</span>{/if}</button>
-      <button class="tab" class:active={tab === "body"} onclick={() => (tab = "body")}>Body {#if bodyKind !== "none"}<span class="count">{bodyKind}</span>{/if}</button>
-      <button class="tab" class:active={tab === "auth"} onclick={() => (tab = "auth")}>Auth {#if req.auth.type !== "inherit"}<span class="count">{req.auth.type}</span>{/if}</button>
-      <button class="tab" class:active={tab === "expect"} onclick={() => (tab = "expect")}>Expect</button>
-      <button class="tab" class:active={tab === "scripts"} onclick={() => (tab = "scripts")}>Scripts {#if req.scripts.pre || req.scripts.post}<span class="count">js</span>{/if}</button>
-      <button class="tab" class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if req.scripts.test}<span class="count">js</span>{/if}</button>
-      <button class="tab" class:active={tab === "docs"} onclick={() => (tab = "docs")}>Docs</button>
+    <div class="tabs" role="tablist" aria-label="Secciones de la solicitud">
+      <button class="tab" role="tab" aria-selected={tab === "params"} class:active={tab === "params"} onclick={() => (tab = "params")}>Params {#if count(req.query)}<span class="count">{count(req.query)}</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "headers"} class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers {#if count(req.headers)}<span class="count">{count(req.headers)}</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "body"} class:active={tab === "body"} onclick={() => (tab = "body")}>Body {#if bodyKind !== "none"}<span class="count">{bodyKind}</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "auth"} class:active={tab === "auth"} onclick={() => (tab = "auth")}>Auth {#if req.auth.type !== "inherit"}<span class="count">{req.auth.type}</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "expect"} class:active={tab === "expect"} onclick={() => (tab = "expect")}>Expect</button>
+      <button class="tab" role="tab" aria-selected={tab === "scripts"} class:active={tab === "scripts"} onclick={() => (tab = "scripts")}>Scripts {#if req.scripts.pre || req.scripts.post}<span class="count">js</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "tests"} class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if req.scripts.test}<span class="count">js</span>{/if}</button>
+      <button class="tab" role="tab" aria-selected={tab === "docs"} class:active={tab === "docs"} onclick={() => (tab = "docs")}>Docs</button>
     </div>
 
     <div class="content">
       {#if tab === "params"}
-        <KeyValue entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" />
+        <KeyValue entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
       {:else if tab === "headers"}
-        <KeyValue entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" />
+        <KeyValue entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" />
       {:else if tab === "body"}
         <div class="body">
-          <div class="body-kind">
-            {#each ["none", "json", "text", "form"] as k}
-              <button class="chip" class:active={bodyKind === k} onclick={() => setBodyKind(k as Body["type"])}>{k}</button>
-            {/each}
+          <div class="body-bar">
+            <div class="segmented" role="radiogroup" aria-label="Tipo de cuerpo">
+              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["text", "Texto"], ["form", "Formulario"]] as [k, label]}
+                <button role="radio" aria-checked={bodyKind === k} class:active={bodyKind === k} onclick={() => setBodyKind(k as Body["type"])}>{label}</button>
+              {/each}
+            </div>
+            {#if bodyKind === "json"}
+              <button class="btn small" onclick={formatJson} title="Reindentar el JSON">Formatear</button>
+              {#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}
+            {/if}
           </div>
           {#if bodyKind === "json" || bodyKind === "text"}
             <div class="editor-wrap">
               <CodeEditor value={bodyText} language={bodyKind === "json" ? "json" : "text"} onchange={setBodyText} />
             </div>
           {:else if bodyKind === "form"}
-            <KeyValue entries={req.body.type === "form" ? req.body.fields : {}} onchange={(fields) => set("body", { type: "form", fields })} keyPlaceholder="campo" />
+            <KeyValue entries={req.body.type === "form" ? req.body.fields : {}} onchange={(fields) => set("body", { type: "form", fields })} keyPlaceholder="campo" addLabel="Añadir campo" />
           {:else}
-            <p class="muted hint">Esta solicitud no envía cuerpo.</p>
+            <div class="nobody">
+              <p class="muted">Esta solicitud no envía cuerpo.</p>
+              <button class="btn" onclick={() => { setBodyKind("json"); }}>Añadir cuerpo JSON</button>
+            </div>
           {/if}
         </div>
       {:else if tab === "auth"}
@@ -159,11 +193,53 @@
     align-items: center;
     justify-content: center;
   }
+  .namebar {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 10px 12px 0;
+  }
+  .name-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border-color: transparent;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 2px 6px;
+    margin-left: -6px;
+  }
+  .name-input:hover {
+    border-color: var(--border);
+  }
+  .key {
+    font-size: 11px;
+    white-space: nowrap;
+  }
   .urlbar {
     display: flex;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 8px 12px 10px;
     align-items: center;
+  }
+  .body-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .json-error {
+    color: var(--err);
+    font-size: 11.5px;
+  }
+  .nobody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 8px 0;
+  }
+  .nobody p {
+    margin: 0;
   }
   .method-select {
     width: 100px;
@@ -192,27 +268,6 @@
     flex-direction: column;
     height: 100%;
     gap: 8px;
-  }
-  .body-kind {
-    display: flex;
-    gap: 4px;
-  }
-  .chip {
-    padding: 2px 10px;
-    border-radius: 999px;
-    font-size: 11.5px;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    transition: all var(--t);
-  }
-  .chip:hover {
-    color: var(--text);
-    border-color: var(--border-strong);
-  }
-  .chip.active {
-    color: var(--accent-strong);
-    border-color: var(--accent);
-    background: var(--accent-soft);
   }
   .editor-wrap {
     flex: 1;

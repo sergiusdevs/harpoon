@@ -60,6 +60,18 @@
   box-sizing: border-box;
 }
 
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+button:focus-visible,
+[role="treeitem"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 html,
 body {
   margin: 0;
@@ -179,6 +191,51 @@ input {
   color: var(--text-muted);
 }
 
+.btn.small {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-raised);
+}
+
+.segmented button {
+  padding: 4px 11px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+  transition: background var(--t), color var(--t);
+}
+
+.segmented button:last-child {
+  border-right: 0;
+}
+
+.segmented button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.segmented button.active {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-soft) !important;
+}
+
+.dragging {
+  opacity: 0.45;
+}
+
 .btn.icon:hover {
   background: var(--bg-hover);
   color: var(--text);
@@ -283,8 +340,15 @@ input {
   transition: opacity var(--t);
 }
 
-.kv tr:hover .del {
+.kv tr:hover .del,
+.kv tr:focus-within .del {
   opacity: 1;
+}
+
+.kv-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 4px 0;
 }
 
 .kv .del:hover {

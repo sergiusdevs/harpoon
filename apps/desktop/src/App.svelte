@@ -43,8 +43,9 @@
       </span>
       {#if store.collection}
         <label class="env">
-          <span class="muted">Entorno</span>
+          <span class="muted" id="env-label">Entorno</span>
           <select
+            aria-labelledby="env-label"
             value={store.env ?? ""}
             onchange={(e) => {
               const v = e.currentTarget.value;
@@ -59,6 +60,12 @@
             <option disabled>──────</option>
             <option value="__edit">Editar entornos…</option>
           </select>
+          <button class="btn icon" title="Nuevo entorno" aria-label="Nuevo entorno" onclick={() => store.quickNewEnvironment()}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+          <button class="btn icon" title="Editar entornos (⌘E)" aria-label="Editar entornos" onclick={() => (store.modal = "environments")}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+          </button>
         </label>
       {/if}
     </div>
@@ -123,10 +130,13 @@
   }
   .env {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     align-items: center;
     font-size: 12px;
     -webkit-app-region: no-drag;
+  }
+  .env > span {
+    margin-right: 4px;
   }
   .env select {
     padding: 3px 8px;

@@ -1,7 +1,7 @@
 // Puente con el backend. Dentro de Tauri usa `invoke`; en un navegador
 // normal (desarrollo de la UI, capturas) usa un mock con la colección de ejemplo.
 
-import type { Collection, CollectionMeta, Environment, Exchange, Request } from "./types";
+import type { Collection, CollectionMeta, Environment, Exchange, Outcome, Request } from "./types";
 import { emptyRequest, normalizeCollection } from "./types";
 
 export interface Api {
@@ -99,10 +99,11 @@ function mockApi(): Api {
         auth: { type: "none" },
         expect: { status: 200, headers: {}, body_contains: [], max_time_ms: 2000 },
       },
+      "docs/home": { ...emptyRequest("Página de docs"), url: "{{base_url}}/docs", docs: "Devuelve HTML: prueba la pestaña Vista." },
       "user/login": { ...emptyRequest("Login"), url: "{{base_url}}/{{api_version}}/user/login", query: { username: "ada", password: "{{password}}" } },
     },
   };
-  const folders = new Set<string>(["pets", "store", "user", "admin"]);
+  const folders = new Set<string>(["pets", "store", "user", "admin", "docs"]);
   let runtime: Record<string, string> = { token: "demo-token" };
   const snapshot = async () => structuredClone(col);
   const vars: Record<string, string> = { base_url: "http://localhost:8080", api_version: "v2", pet_id: "42" };
@@ -170,9 +171,13 @@ function mockApi(): Api {
       col.meta = structuredClone(meta);
       return snapshot();
     },
-    sendRequest: async (_root, _env, request) => {
+    sendRequest: async (_root, _env, request): Promise<Exchange> => {
       await new Promise((r) => setTimeout(r, 180 + Math.random() * 120));
       const url = interp(request.url);
+      if (url.endsWith("/docs")) {
+        const html = "<!doctype html><html><body style=\"font-family:sans-serif;padding:24px\"><h1>Petstore API</h1><p>Documentación <b>HTML</b> servida por la API.</p><ul><li>GET /pet</li><li>POST /pet</li></ul></body></html>";
+        return { sent: { method: request.method, url, headers: request.headers, query: request.query }, response: { status: 200, headers: { "content-type": "text/html; charset=utf-8", "content-length": String(html.length) }, body: html, is_json: false, elapsed_ms: 9, size: html.length }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
+      }
       const status = request.method === "POST" ? 201 : url.includes("inventory") ? 500 : 200;
       const body =
         status === 500
@@ -182,7 +187,7 @@ function mockApi(): Api {
             : { pets: [{ id: 1, name: "Rex", status: "available", tags: ["dog", "friendly"] }, { id: 2, name: "Misu", status: "available", tags: ["cat"] }], total: 2 };
       const text = JSON.stringify(body, null, 2);
       const elapsed = Math.round(14 + Math.random() * 80);
-      const assertions = [];
+      const assertions: Outcome[] = [];
       if (request.expect.status !== undefined)
         assertions.push({ name: `status == ${request.expect.status}`, passed: status === request.expect.status, detail: status === request.expect.status ? undefined : `recibido ${status}` });
       for (const [k, v] of Object.entries(request.expect.headers))
@@ -192,7 +197,7 @@ function mockApi(): Api {
       if (request.expect.max_time_ms !== undefined)
         assertions.push({ name: `time <= ${request.expect.max_time_ms}ms`, passed: elapsed <= request.expect.max_time_ms });
       // Simulación de scripts: en la app real los ejecuta QuickJS en Rust.
-      const tests = [];
+      const tests: Outcome[] = [];
       const logs: string[] = [];
       if (col.meta.scripts.test) tests.push({ name: "responde JSON", passed: true });
       if (request.scripts.post.includes("pet_id")) {
