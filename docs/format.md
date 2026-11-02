@@ -163,3 +163,14 @@ La prioridad, de menor a mayor, es colección, carpetas desde la raíz hasta la
 más cercana, entorno y variables de ejecución. Las variables de carpeta se
 versionan con la colección; guarda los secretos en los archivos de entorno privados.
 En la app se editan desde el menú contextual de la carpeta.
+
+## Compartir entre usuarios de Harpoon
+
+La app permite exportar e importar una colección desde el botón de intercambio.
+En la CLI se puede usar `harpoon share-export coleccion.harpoon.json` y
+`harpoon share-import coleccion.harpoon.json ./nueva-coleccion`.
+El archivo contiene los TOML y carpetas de la colección; excluye `.harpoon`,
+`*.secrets.toml`, archivos adjuntos y certificados. Se advierte cuando hay
+adjuntos o certificados que deben trasladarse por separado. El contenido escrito
+directamente en los TOML, incluidas posibles credenciales, sí se comparte.
+La importación exige un directorio nuevo y no sobrescribe una colección existente.

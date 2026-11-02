@@ -7,6 +7,8 @@ import { folderChain } from "../domain/paths";
 export { folderChain } from "../domain/paths";
 import { emptyRequest, normalizeCollection } from "../domain/types";
 
+export interface SharePreview { name: string; warnings: string[] }
+
 export interface Api {
   openCollection(path: string): Promise<Collection>;
   initCollection(path: string, name: string): Promise<Collection>;
@@ -25,6 +27,9 @@ export interface Api {
   deleteEnvironment(root: string, name: string): Promise<Collection>;
   saveMeta(root: string, meta: CollectionMeta): Promise<Collection>;
   sendRequest(root: string, env: string | null, request: Request, key: string): Promise<Exchange>;
+  exportHarpoon(root: string, name: string): Promise<string[] | null>;
+  previewHarpoon(path: string): Promise<SharePreview>;
+  importHarpoon(path: string, parent: string, name: string): Promise<Collection>;
   listCookies(root: string): Promise<StoredCookie[]>;
   addCookie(root: string, url: string, cookie: string): Promise<void>;
   removeCookie(root: string, domain: string, path: string, name: string): Promise<void>;
@@ -74,6 +79,13 @@ async function tauriApi(): Promise<Api> {
       const path = await save({ defaultPath: filename, title: "Guardar respuesta" });
       if (path) await invoke("save_response_file", { path, bytes: Array.from(bytes) });
     },
+    exportHarpoon: async (root, name) => {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({ title: "Exportar colección Harpoon", defaultPath: `${name}.harpoon.json`, filters: [{ name: "Colección Harpoon", extensions: ["json"] }] });
+      return path ? invoke<string[]>("export_harpoon", { root, path }) : null;
+    },
+    previewHarpoon: (path) => invoke<SharePreview>("preview_harpoon", { path }),
+    importHarpoon: (path, parent, name) => col("import_harpoon", { path, parent, name }),
     listCookies: (root) => invoke<StoredCookie[]>("list_cookies", { root }),
     addCookie: (root, url, cookie) => invoke("add_cookie", { root, url, cookie }),
     removeCookie: (root, domain, path, name) => invoke("remove_cookie", { root, domain, path, name }),
@@ -284,6 +296,9 @@ function mockApi(): Api {
       link.href = url; link.download = filename; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
+    exportHarpoon: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    previewHarpoon: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    importHarpoon: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     listCookies: async () => structuredClone(mockCookies),
     addCookie: async (_root, url, cookie) => {
       const parsed = new URL(url), pair = cookie.split(";", 1)[0], at = pair.indexOf("=");

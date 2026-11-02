@@ -106,6 +106,14 @@
     e.stopPropagation();
     menu = { x: e.clientX, y: e.clientY, items };
   }
+  function openImportMenu(e: MouseEvent) {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    menu = { x: rect.left, y: rect.bottom + 4, items: [
+      { label: "Importar / exportar colección…", action: () => { store.modal = "share"; } },
+      ...(store.collection ? [{ label: "Importar desde cURL…", action: () => store.importCurl() }] : []),
+    ] };
+  }
   const requestMenu = (key: string): Item[] => [
     { label: "Renombrar / mover…", action: () => store.renameRequest(key) },
     { label: "Duplicar…", action: () => store.duplicate(key) },
@@ -119,6 +127,7 @@
     { label: "Borrar carpeta…", action: () => store.deleteFolder(path), danger: true },
   ];
   const rootMenu = (): Item[] => [
+    { label: "Importar / exportar colección…", action: () => { store.modal = "share"; } },
     { label: "Importar desde cURL…", action: () => store.importCurl() },
     { label: "Nueva solicitud…", action: () => store.newRequest("") },
     { label: "Nueva carpeta…", action: () => store.newFolder("") },
@@ -252,7 +261,7 @@
       <button class="btn icon" title="Abrir colección" aria-label="Abrir colección" onclick={() => store.pickAndOpen()}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
       </button>
-      {#if store.collection}<button class="btn icon" title="Importar desde cURL" aria-label="Importar desde cURL" onclick={() => store.importCurl()}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg></button>{/if}
+      <button class="btn icon" title="Importar y exportar" aria-label="Importar y exportar" aria-haspopup="menu" onclick={openImportMenu}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg></button>
       <button class="btn icon" title="Configuración (⌘,)" aria-label="Configuración" onclick={() => (store.modal = "themes")}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.3 3a7 7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 3h4l.3-3a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1z"/></svg>
       </button>
@@ -352,6 +361,8 @@
   }
   .brand {
     display: flex;
+    min-width: 0;
+    overflow: hidden;
     align-items: center;
     gap: 7px;
     font-weight: 600;
@@ -359,6 +370,7 @@
   }
   .actions {
     display: flex;
+    flex: 0 0 auto;
     gap: 2px;
     -webkit-app-region: no-drag;
   }

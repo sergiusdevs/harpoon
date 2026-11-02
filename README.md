@@ -64,6 +64,8 @@ harpoon run users --env prod   # solo la carpeta users/, con otro entorno
 harpoon run --junit out.xml    # informe JUnit para GitHub Actions / GitLab
 harpoon run --data casos.csv   # una ejecución por fila; --iterations N para repetir
 harpoon run --bail --json      # para CI: se detiene al primer fallo, informe JSON
+harpoon share-export api.harpoon.json  # exporta la colección sin estado local
+harpoon share-import api.harpoon.json ./api-compartida
 ```
 
 Códigos de salida: `0` todo correcto, `1` alguna comprobación falló, `2` error de uso o de red.
@@ -118,6 +120,7 @@ Las variables de ejecución se guardan en `.harpoon/vars.toml` (fuera de Git).
   parámetros, cabeceras y formularios, con el ámbito de origen y aviso de variables desconocidas.
 - Respuesta en modo formateado u original, descarga del cuerpo y comparación de dos entradas del historial.
 - Importación y exportación de comandos cURL, sin ejecutar el comando pegado, y aviso de cambios sin guardar.
+- Comparte colecciones con otros usuarios de Harpoon desde el menú de importación y exportación.
 - Respuesta con JSON plegable y búsqueda (`⌘F`), cabeceras, cookies, tests (Expect +
   scripts), consola de `console.log`, vista previa HTML en iframe aislado, imágenes,
   lo que se envió realmente e historial de las últimas 50 respuestas.

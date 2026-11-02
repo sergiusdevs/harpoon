@@ -26,6 +26,9 @@ pub enum Error {
     #[error("error al serializar JSON: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("intercambio de colección: {0}")]
+    Exchange(String),
+
     #[error("variable sin definir: `{0}`")]
     UndefinedVariable(String),
 

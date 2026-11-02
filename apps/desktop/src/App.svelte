@@ -14,6 +14,7 @@
   import CurlImport from "./components/request/CurlImport.svelte";
   import VariableInspector from "./components/request/VariableInspector.svelte";
   import CookieManager from "./components/collection/CookieManager.svelte";
+  import ShareCollection from "./components/collection/ShareCollection.svelte";
 
   let sidebarW = $state(250);
 
@@ -70,7 +71,9 @@
 </div>
 
 <Dialog />
-{#if store.modal === "cookies" && store.collection}
+{#if store.modal === "share"}
+  <ShareCollection />
+{:else if store.modal === "cookies" && store.collection}
   <CookieManager />
 {:else if store.modal === "variables" && store.collection}
   <VariableInspector />

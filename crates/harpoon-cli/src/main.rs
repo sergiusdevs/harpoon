@@ -37,6 +37,10 @@ enum Command {
         #[arg(short, long)]
         name: Option<String>,
     },
+    /// Exporta la colección a un archivo intercambiable de Harpoon.
+    ShareExport { file: PathBuf },
+    /// Importa un archivo Harpoon a un directorio nuevo.
+    ShareImport { file: PathBuf, dir: PathBuf },
     /// Lista las solicitudes y entornos de la colección.
     List,
     /// Envía una solicitud y muestra la respuesta.
@@ -102,6 +106,25 @@ async fn run() -> anyhow::Result<ExitCode> {
                 col.root.display()
             );
             println!("Prueba: cd {} && harpoon list", dir.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::ShareExport { file } => {
+            let col = open(cli.collection.as_deref())?;
+            let shared = harpoon_core::share::export(&col)?;
+            std::fs::write(&file, serde_json::to_vec_pretty(&shared)?)?;
+            for warning in &shared.warnings {
+                eprintln!("Aviso: {warning}");
+            }
+            println!("Colección exportada a {}", file.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::ShareImport { file, dir } => {
+            let shared = harpoon_core::share::read(&file)?;
+            let col = harpoon_core::share::import(&shared, &dir)?;
+            for warning in &shared.warnings {
+                eprintln!("Aviso: {warning}");
+            }
+            println!("Colección importada en {}", col.root.display());
             Ok(ExitCode::SUCCESS)
         }
         Command::List => {
