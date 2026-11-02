@@ -31,7 +31,7 @@ pub enum Error {
     },
     #[error("cabecera inválida `{0}`")]
     Header(String),
-    #[error("fallo de red: {0}")]
+    #[error("fallo de red: {}", describe(.0))]
     Network(reqwest::Error),
     #[error("tiempo agotado tras {0:?}")]
     Timeout(Duration),
@@ -263,6 +263,18 @@ pub async fn execute(
 #[must_use]
 pub fn assertions(expect: &Expect) -> Vec<Assertion> {
     assert::list(expect)
+}
+
+/// Mensaje de red con la causa raíz (`connection refused`, DNS, TLS...).
+fn describe(err: &reqwest::Error) -> String {
+    let mut parts = vec![err.to_string()];
+    let mut source = std::error::Error::source(err);
+    while let Some(s) = source {
+        parts.push(s.to_string());
+        source = s.source();
+    }
+    parts.dedup();
+    parts.join(": ")
 }
 
 fn base64(input: &[u8]) -> String {
