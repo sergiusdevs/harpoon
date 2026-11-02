@@ -1,0 +1,387 @@
+/* Harpoon — tokens de diseño. Oscuro por defecto, denso y limpio. */
+:root {
+  color-scheme: dark;
+  --bg: #16171a;
+  --bg-panel: #1c1d21;
+  --bg-raised: #222428;
+  --bg-hover: #2a2c31;
+  --bg-active: #2f3238;
+  --border: #2b2d33;
+  --border-strong: #3a3d45;
+  --text: #d9dade;
+  --text-muted: #8b8f98;
+  --text-faint: #5e626b;
+  --accent: #4fa3c4;
+  --accent-strong: #63b7d8;
+  --accent-soft: rgba(79, 163, 196, 0.16);
+  --ok: #5fb87a;
+  --warn: #e0a82e;
+  --err: #e0665c;
+  --m-get: #5fb87a;
+  --m-post: #e0a82e;
+  --m-put: #6ea0f0;
+  --m-patch: #c58af9;
+  --m-delete: #e0665c;
+  --m-head: #8b8f98;
+  --m-options: #8b8f98;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius: 6px;
+  --titlebar: 38px;
+  --t: 120ms ease;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f6f4;
+  --bg-panel: #fbfbfa;
+  --bg-raised: #ffffff;
+  --bg-hover: #ececea;
+  --bg-active: #e3e3e0;
+  --border: #e2e2df;
+  --border-strong: #cfcfca;
+  --text: #1e2024;
+  --text-muted: #6b6f78;
+  --text-faint: #a0a4ad;
+  --accent: #1f6f8b;
+  --accent-strong: #185a70;
+  --accent-soft: rgba(31, 111, 139, 0.12);
+  --ok: #2e8b57;
+  --warn: #b57a00;
+  --err: #c0392b;
+  --m-get: #2e8b57;
+  --m-post: #b57a00;
+  --m-put: #2d6cdf;
+  --m-patch: #8a4fd6;
+  --m-delete: #c0392b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+#app {
+  height: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+select {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  outline: none;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input {
+  user-select: text;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  transition: background var(--t), border-color var(--t), transform 80ms ease;
+}
+
+.btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1a21;
+  font-weight: 600;
+}
+
+.btn.primary:hover {
+  background: var(--accent-strong);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
+.btn.icon {
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.btn.icon:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.method {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.method.GET {
+  color: var(--m-get);
+}
+.method.POST {
+  color: var(--m-post);
+}
+.method.PUT {
+  color: var(--m-put);
+}
+.method.PATCH {
+  color: var(--m-patch);
+}
+.method.DELETE {
+  color: var(--m-delete);
+}
+.method.HEAD,
+.method.OPTIONS {
+  color: var(--m-head);
+}
+
+/* Pestañas */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 10px;
+}
+
+.tab {
+  padding: 8px 10px;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--t), border-color var(--t);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.tab .count {
+  font-size: 10px;
+  background: var(--bg-active);
+  color: var(--text-muted);
+  border-radius: 10px;
+  padding: 0 6px;
+  line-height: 16px;
+}
+
+/* Tabla clave/valor */
+.kv {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.kv td {
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.kv input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.kv input:hover {
+  border-color: var(--border);
+}
+
+.kv input:focus {
+  background: var(--bg-raised);
+}
+
+.kv .del {
+  width: 28px;
+  text-align: center;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity var(--t);
+}
+
+.kv tr:hover .del {
+  opacity: 1;
+}
+
+.kv .del:hover {
+  color: var(--err);
+}
+
+/* CodeMirror */
+.cm-editor {
+  height: 100%;
+  font-size: 12.5px;
+  background: transparent;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-scroller {
+  font-family: var(--mono) !important;
+  line-height: 1.55;
+}
+
+.cm-gutters {
+  background: transparent !important;
+  border-right: 1px solid var(--border) !important;
+  color: var(--text-faint) !important;
+}
+
+.cm-activeLine,
+.cm-activeLineGutter {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.cm-content {
+  user-select: text;
+  caret-color: var(--accent);
+}
+
+.cm-selectionBackground {
+  background: var(--accent-soft) !important;
+}
+
+.tok-string {
+  color: #9ece6a;
+}
+.tok-number,
+.tok-bool,
+.tok-null {
+  color: #ff9e64;
+}
+.tok-propertyName {
+  color: #7dcfff;
+}
+.tok-punctuation {
+  color: var(--text-muted);
+}
+.tok-invalid {
+  color: var(--err);
+}
+
+:root[data-theme="light"] .tok-string {
+  color: #2e7d32;
+}
+:root[data-theme="light"] .tok-number,
+:root[data-theme="light"] .tok-bool,
+:root[data-theme="light"] .tok-null {
+  color: #c2410c;
+}
+:root[data-theme="light"] .tok-propertyName {
+  color: #1d4ed8;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-in {
+  animation: fade-in 160ms ease both;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pulse {
+  animation: pulse 1s ease-in-out infinite;
+}
