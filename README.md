@@ -114,8 +114,9 @@ Las variables de ejecución se guardan en `.harpoon/vars.toml` (fuera de Git).
 - Árbol de carpetas y solicitudes con **arrastrar y soltar**, menú contextual, filtro
   (`⌘K`) y navegación por teclado (flechas, `Enter`, `F2`, `⌘⌫`).
 - Pestañas Params / Headers / Body / Auth / Expect / Scripts / Tests / Docs.
-- Respuesta con JSON plegable, cabeceras, tests (Expect + scripts), consola de
-  `console.log`, vista previa HTML en iframe aislado y lo que se envió realmente.
+- Respuesta con JSON plegable y búsqueda (`⌘F`), cabeceras, cookies, tests (Expect +
+  scripts), consola de `console.log`, vista previa HTML en iframe aislado, imágenes,
+  lo que se envió realmente e historial de las últimas 50 respuestas.
 - Entornos con variables secretas (van a `*.secrets.toml`), ajustes de colección
   (auth global, variables, scripts, TLS, proxy).
 - Atajos: `⌘↩` enviar, `⌘S` guardar, `⌘N` nueva solicitud, `⇧⌘N` carpeta, `⌘E`
@@ -141,7 +142,7 @@ Las variables de ejecución se guardan en `.harpoon/vars.toml` (fuera de Git).
 | 2 | REST + CLI para CI: auth completa, TLS/mTLS, `send`/`run`, JUnit, datos, iteraciones | ✅ |
 | 3 | Scripts y tests: QuickJS embebido, `pre`/`post`/`test`, `expect` estilo Chai, variables persistentes | ✅ |
 | 4 | Escritorio: Tauri 2 + Svelte 5, gestión completa de la colección, DnD, accesibilidad | ✅ (en mejora continua) |
-| 4b | Calidad de vida: historial de respuestas, búsqueda en la respuesta, cookies, imágenes/binarios | 🔜 siguiente |
+| 4b | Calidad de vida: historial de respuestas, búsqueda en la respuesta, cookies, imágenes/binarios | ✅ (falta diff) |
 | 5 | Protocolos: GraphQL (introspección y esquemas locales), WebSocket, gRPC (`.proto` y reflexión) | ⏳ |
 | 6 | Ciclo de vida: import/export OpenAPI (y Postman/Bruno/`.http`), `harpoon docs` HTML autocontenido, `harpoon mock` | ⏳ |
 | 7 | Editor: extensión de VS Code que invoca la CLI | ⏳ |

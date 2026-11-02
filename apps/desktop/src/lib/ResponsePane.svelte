@@ -2,10 +2,27 @@
   import { store, fmtSize } from "./store.svelte";
   import CodeEditor from "./CodeEditor.svelte";
 
-  type Tab = "body" | "preview" | "headers" | "tests" | "console" | "sent";
+  import type { Exchange } from "./types";
+
+  type Tab = "body" | "preview" | "headers" | "cookies" | "tests" | "console" | "sent" | "history";
   let tab = $state<Tab>("body");
 
-  const x = $derived(store.exchange);
+  /** Entrada del historial convertida a Exchange para reutilizar la vista. */
+  const fromHistory = $derived.by((): Exchange | null => {
+    const h = store.viewingHistory;
+    if (!h) return null;
+    const ct = (h.headers["content-type"] ?? "").toLowerCase();
+    return {
+      sent: { method: h.method, url: h.url, headers: {}, query: {} },
+      response: { status: h.status, headers: h.headers, body: h.body, is_json: ct.includes("json"), elapsed_ms: h.elapsed_ms, size: h.size },
+      assertions: [],
+      tests: [],
+      logs: [],
+      vars: {},
+      passed: h.checks_total === 0 || h.checks_passed === h.checks_total,
+    };
+  });
+  const x = $derived(fromHistory ?? store.exchange);
   const statusClass = (s: number) => (s < 300 ? "ok" : s < 400 ? "info" : s < 500 ? "warn" : "err");
   const pretty = $derived.by(() => {
     if (!x) return "";
@@ -20,7 +37,19 @@
   const failed = $derived(checks.filter((a) => !a.passed).length);
   const isHtml = $derived(!!x && /text\/html/i.test(x.response.headers["content-type"] ?? ""));
   const isImage = $derived(!!x && /^image\//i.test(x.response.headers["content-type"] ?? ""));
+  const imageSrc = $derived(x && isImage && x.response.body_base64 ? `data:${x.response.headers["content-type"]};base64,${x.response.body_base64}` : null);
+  const cookies = $derived.by(() => {
+    const raw = x?.response.headers["set-cookie"];
+    if (!raw) return [] as { name: string; value: string; attrs: string }[];
+    return raw.split("\n").map((line) => {
+      const [pair, ...rest] = line.split(";");
+      const eq = pair.indexOf("=");
+      return { name: pair.slice(0, eq).trim(), value: pair.slice(eq + 1).trim(), attrs: rest.map((a) => a.trim()).join(" · ") };
+    });
+  });
+  const fmtTime = (iso: string) => iso.replace("T", " ").replace("Z", "");
   let copied = $state(false);
+  let bodyEditor = $state<CodeEditor | null>(null);
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -31,6 +60,32 @@
     }
   }
 </script>
+
+{#snippet historyList()}
+  {#if store.history.length === 0}
+    <p class="muted pad">Sin historial para esta solicitud. Se guardan las últimas 50 respuestas en <code class="mono">.harpoon/history/</code> (fuera de Git).</p>
+  {:else}
+    <div class="hist-tools">
+      <span class="muted hint">{store.history.length} respuestas · clic para ver</span>
+      <button class="btn small" onclick={() => store.clearHistory()}>Vaciar</button>
+    </div>
+    <ul class="hist">
+      {#each store.history as h, i (i + ":" + h.at)}
+        <li>
+          <button class="hist-item" class:active={store.viewingHistory === h} onclick={() => store.showHistory(h)}>
+            <span class="status small {statusClass(h.status)}">{h.status}</span>
+            <span class="mono when">{fmtTime(h.at)}</span>
+            <span class="muted">{h.elapsed_ms} ms · {fmtSize(h.size)}</span>
+            {#if h.checks_total}
+              <span class="checks" class:bad={h.checks_passed < h.checks_total}>{h.checks_passed}/{h.checks_total}</span>
+            {/if}
+            {#if h.env}<span class="env-tag">{h.env}</span>{/if}
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
 
 <section class="pane">
   {#if store.sending}
@@ -44,6 +99,12 @@
       <p class="err mono">{store.error}</p>
     </div>
   {:else if x}
+    {#if store.viewingHistory}
+      <div class="history-banner">
+        <span>Viendo respuesta del historial · {fmtTime(store.viewingHistory.at)}{#if store.viewingHistory.env} · {store.viewingHistory.env}{/if}</span>
+        <button class="btn small" onclick={() => store.showHistory(null)}>Volver</button>
+      </div>
+    {/if}
     <div class="summary fade-in">
       <span class="status {statusClass(x.response.status)}">{x.response.status}</span>
       <span class="meta"><b>{x.response.elapsed_ms}</b> ms</span>
@@ -60,19 +121,34 @@
         <button class="tab" role="tab" aria-selected={tab === "preview"} class:active={tab === "preview"} onclick={() => (tab = "preview")}>Vista</button>
       {/if}
       <button class="tab" role="tab" aria-selected={tab === "headers"} class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers <span class="count">{Object.keys(x.response.headers).length}</span></button>
+      {#if cookies.length}
+        <button class="tab" role="tab" aria-selected={tab === "cookies"} class:active={tab === "cookies"} onclick={() => (tab = "cookies")}>Cookies <span class="count">{cookies.length}</span></button>
+      {/if}
       <button class="tab" role="tab" aria-selected={tab === "tests"} class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if checks.length}<span class="count" class:bad={failed > 0}>{checks.length}</span>{/if}</button>
       <button class="tab" role="tab" aria-selected={tab === "console"} class:active={tab === "console"} onclick={() => (tab = "console")}>Consola {#if x.logs.length}<span class="count">{x.logs.length}</span>{/if}</button>
       <button class="tab" role="tab" aria-selected={tab === "sent"} class:active={tab === "sent"} onclick={() => (tab = "sent")}>Enviado</button>
+      <button class="tab" role="tab" aria-selected={tab === "history"} class:active={tab === "history"} onclick={() => (tab = "history")}>Historial {#if store.history.length}<span class="count">{store.history.length}</span>{/if}</button>
     </div>
     <div class="content">
       {#if tab === "body"}
-        <div class="body-tools">
-          <button class="btn small" onclick={() => copy(pretty)}>{copied ? "Copiado ✓" : "Copiar"}</button>
-          {#if isImage}<span class="muted hint">imagen de {fmtSize(x.response.size)} (vista no disponible todavía)</span>{/if}
-        </div>
-        <div class="body-editor">
-          <CodeEditor value={pretty} language={x.response.is_json ? "json" : "text"} readonly />
-        </div>
+        {#if imageSrc}
+          <div class="image-wrap">
+            <img src={imageSrc} alt="Respuesta ({x.response.headers['content-type']})" />
+            <span class="muted hint">{x.response.headers["content-type"]} · {fmtSize(x.response.size)}</span>
+          </div>
+        {:else if x.response.is_binary}
+          <div class="empty">
+            <p class="muted">Respuesta binaria ({x.response.headers["content-type"] ?? "tipo desconocido"}, {fmtSize(x.response.size)}).</p>
+          </div>
+        {:else}
+          <div class="body-tools">
+            <button class="btn small" onclick={() => copy(pretty)}>{copied ? "Copiado ✓" : "Copiar"}</button>
+            <button class="btn small" onclick={() => bodyEditor?.openSearch()} title="Buscar en la respuesta (⌘F)">Buscar</button>
+          </div>
+          <div class="body-editor">
+            <CodeEditor bind:this={bodyEditor} value={pretty} language={x.response.is_json ? "json" : "text"} readonly />
+          </div>
+        {/if}
       {:else if tab === "preview"}
         <!-- sandbox vacío: sin scripts, sin same-origin, sin formularios; nada sale de la app -->
         <iframe class="preview" title="Vista previa HTML" sandbox="" srcdoc={x.response.body}></iframe>
@@ -84,6 +160,17 @@
             {/each}
           </tbody>
         </table>
+      {:else if tab === "cookies"}
+        <table class="hdrs">
+          <thead><tr><th>Nombre</th><th>Valor</th><th>Atributos</th></tr></thead>
+          <tbody>
+            {#each cookies as c}
+              <tr><td class="k mono">{c.name}</td><td class="v mono">{c.value}</td><td class="v muted">{c.attrs}</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else if tab === "history"}
+        {@render historyList()}
       {:else if tab === "tests"}
         {#if checks.length === 0}
           <p class="muted pad">Sin comprobaciones. Añade aserciones en <b>Expect</b> o scripts en <b>Tests</b>.</p>
@@ -129,6 +216,11 @@
         </div>
       {/if}
     </div>
+  {:else if store.history.length}
+    <div class="tabs" role="tablist">
+      <button class="tab active" role="tab" aria-selected="true">Historial <span class="count">{store.history.length}</span></button>
+    </div>
+    <div class="content">{@render historyList()}</div>
   {:else}
     <div class="empty">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L18 6" /><path d="M20 4l-6 1.5 4.5 4.5L20 4z" /></svg>
@@ -200,6 +292,93 @@
     overflow: auto;
     display: flex;
     flex-direction: column;
+  }
+  .history-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 14px;
+    font-size: 12px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--border);
+  }
+  .image-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px;
+    background-image: linear-gradient(45deg, var(--bg-active) 25%, transparent 25%), linear-gradient(-45deg, var(--bg-active) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--bg-active) 75%), linear-gradient(-45deg, transparent 75%, var(--bg-active) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+  .image-wrap img {
+    max-width: 100%;
+    max-height: 80%;
+    object-fit: contain;
+    border: 1px solid var(--border);
+    background: #fff;
+  }
+  .hist-tools {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px 4px;
+  }
+  .hist {
+    list-style: none;
+    margin: 0;
+    padding: 4px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .hist-item {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    font-size: 12px;
+  }
+  .hist-item:hover {
+    background: var(--bg-hover);
+  }
+  .hist-item.active {
+    background: var(--accent-soft);
+  }
+  .status.small {
+    font-size: 11px;
+    padding: 1px 6px;
+  }
+  .when {
+    color: var(--text);
+  }
+  .checks {
+    color: var(--ok);
+    font-size: 11px;
+  }
+  .checks.bad {
+    color: var(--err);
+  }
+  .env-tag {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 7px;
+  }
+  thead th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 6px 14px 2px;
   }
   .body-tools {
     display: flex;

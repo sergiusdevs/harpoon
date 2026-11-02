@@ -7,6 +7,7 @@
   import { json } from "@codemirror/lang-json";
   import { javascript } from "@codemirror/lang-javascript";
   import { foldGutter, syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
+  import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
   import { tags } from "@lezer/highlight";
 
   interface Props {
@@ -51,10 +52,25 @@
           drawSelection(),
           bracketMatching(),
           history(),
-          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+          search({ top: true }),
+          EditorState.phrases.of({
+            Find: "Buscar",
+            Replace: "Reemplazar",
+            next: "siguiente",
+            previous: "anterior",
+            all: "todas",
+            "match case": "mayúsculas",
+            regexp: "regex",
+            "by word": "palabra",
+            replace: "reemplazar",
+            "replace all": "reemplazar todo",
+            close: "cerrar",
+          }),
+          highlightSelectionMatches(),
+          keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
           syntaxHighlighting(highlight),
           langConf.of(langExt(language)),
-          readonlyConf.of([EditorState.readOnly.of(readonly), EditorView.editable.of(!readonly)]),
+          readonlyConf.of([EditorState.readOnly.of(readonly)]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged && onchange) onchange(u.state.doc.toString());
           }),
@@ -65,6 +81,12 @@
     });
     return () => view.destroy();
   });
+
+  /** Abre el panel de búsqueda (equivale a ⌘F con el editor enfocado). */
+  export function openSearch() {
+    view?.focus();
+    if (view) openSearchPanel(view);
+  }
 
   // Sincroniza cambios externos (p. ej. cambiar de solicitud) sin pisar la edición.
   $effect(() => {
@@ -80,7 +102,7 @@
     view.dispatch({
       effects: [
         langConf.reconfigure(langExt(language)),
-        readonlyConf.reconfigure([EditorState.readOnly.of(readonly), EditorView.editable.of(!readonly)]),
+        readonlyConf.reconfigure([EditorState.readOnly.of(readonly)]),
       ],
     });
   });

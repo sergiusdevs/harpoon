@@ -1,7 +1,7 @@
 // Puente con el backend. Dentro de Tauri usa `invoke`; en un navegador
 // normal (desarrollo de la UI, capturas) usa un mock con la colección de ejemplo.
 
-import type { Collection, CollectionMeta, Environment, Exchange, Outcome, Request } from "./types";
+import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, Outcome, Request } from "./types";
 import { emptyRequest, normalizeCollection } from "./types";
 
 export interface Api {
@@ -18,7 +18,9 @@ export interface Api {
   saveEnvironment(root: string, name: string, env: Environment): Promise<Collection>;
   deleteEnvironment(root: string, name: string): Promise<Collection>;
   saveMeta(root: string, meta: CollectionMeta): Promise<Collection>;
-  sendRequest(root: string, env: string | null, request: Request): Promise<Exchange>;
+  sendRequest(root: string, env: string | null, request: Request, key: string): Promise<Exchange>;
+  history(root: string, key: string): Promise<HistoryEntry[]>;
+  clearHistory(root: string, key: string): Promise<void>;
   runtimeVars(root: string): Promise<Record<string, string>>;
   saveRuntimeVars(root: string, vars: Record<string, string>): Promise<void>;
 }
@@ -47,8 +49,10 @@ async function tauriApi(): Promise<Api> {
     saveEnvironment: (root, name, env) => col("save_environment", { root, name, env }),
     deleteEnvironment: (root, name) => col("delete_environment", { root, name }),
     saveMeta: (root, meta) => col("save_meta", { root, meta }),
-    sendRequest: (root, env, request) =>
-      invoke<Exchange>("send_request", { args: { root, env, request } }),
+    sendRequest: (root, env, request, key) =>
+      invoke<Exchange>("send_request", { args: { root, env, key, request } }),
+    history: (root, key) => invoke<HistoryEntry[]>("history", { root, key }),
+    clearHistory: (root, key) => invoke("clear_history", { root, key }),
     runtimeVars: (root) => invoke<Record<string, string>>("runtime_vars", { root }),
     saveRuntimeVars: (root, vars) => invoke("save_runtime_vars", { root, vars }),
   };
@@ -100,11 +104,13 @@ function mockApi(): Api {
         expect: { status: 200, headers: {}, body_contains: [], max_time_ms: 2000 },
       },
       "docs/home": { ...emptyRequest("Página de docs"), url: "{{base_url}}/docs", docs: "Devuelve HTML: prueba la pestaña Vista." },
+      "docs/logo": { ...emptyRequest("Logo (PNG)"), url: "{{base_url}}/logo", docs: "Devuelve una imagen y cookies." },
       "user/login": { ...emptyRequest("Login"), url: "{{base_url}}/{{api_version}}/user/login", query: { username: "ada", password: "{{password}}" } },
     },
   };
   const folders = new Set<string>(["pets", "store", "user", "admin", "docs"]);
   let runtime: Record<string, string> = { token: "demo-token" };
+  const hist: Record<string, HistoryEntry[]> = {};
   const snapshot = async () => structuredClone(col);
   const vars: Record<string, string> = { base_url: "http://localhost:8080", api_version: "v2", pet_id: "42" };
   const interp = (s: string) => s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
@@ -171,9 +177,42 @@ function mockApi(): Api {
       col.meta = structuredClone(meta);
       return snapshot();
     },
-    sendRequest: async (_root, _env, request): Promise<Exchange> => {
+    sendRequest: async (_root, env, request, key): Promise<Exchange> => {
+      const x = await mockSend(request);
+      (hist[key] ??= []).unshift({
+        at: new Date().toISOString().slice(0, 19) + "Z",
+        env: env ?? undefined,
+        method: request.method,
+        url: x.sent.url,
+        status: x.response.status,
+        elapsed_ms: x.response.elapsed_ms,
+        size: x.response.size,
+        headers: x.response.headers,
+        body: x.response.body,
+        truncated: false,
+        checks_passed: [...x.assertions, ...x.tests].filter((c) => c.passed).length,
+        checks_total: x.assertions.length + x.tests.length,
+      });
+      return x;
+    },
+    history: async (_r, key) => structuredClone(hist[key] ?? []),
+    clearHistory: async (_r, key) => {
+      delete hist[key];
+    },
+    runtimeVars: async () => ({ ...runtime }),
+    saveRuntimeVars: async (_r, vars) => {
+      runtime = { ...vars };
+    },
+  };
+
+  async function mockSend(request: Request): Promise<Exchange> {
+    {
       await new Promise((r) => setTimeout(r, 180 + Math.random() * 120));
       const url = interp(request.url);
+      if (url.endsWith("/logo")) {
+        const png = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAUklEQVR4nO3PsQ0AIAwDwcD+O8MGoEhBuC8tnZ3kAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4bgEWmwABNMI7oAAAAABJRU5ErkJggg==";
+        return { sent: { method: request.method, url, headers: request.headers, query: request.query }, response: { status: 200, headers: { "content-type": "image/png", "content-length": "150", "set-cookie": "session=abc123; Path=/; HttpOnly\ntheme=dark; Path=/; Max-Age=3600" }, body: "", is_json: false, is_binary: true, body_base64: png, elapsed_ms: 7, size: 150 }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
+      }
       if (url.endsWith("/docs")) {
         const html = "<!doctype html><html><body style=\"font-family:sans-serif;padding:24px\"><h1>Petstore API</h1><p>Documentación <b>HTML</b> servida por la API.</p><ul><li>GET /pet</li><li>POST /pet</li></ul></body></html>";
         return { sent: { method: request.method, url, headers: request.headers, query: request.query }, response: { status: 200, headers: { "content-type": "text/html; charset=utf-8", "content-length": String(html.length) }, body: html, is_json: false, elapsed_ms: 9, size: html.length }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
@@ -225,12 +264,8 @@ function mockApi(): Api {
         vars: { ...runtime },
         passed: assertions.every((a) => a.passed) && tests.every((t) => t.passed),
       };
-    },
-    runtimeVars: async () => ({ ...runtime }),
-    saveRuntimeVars: async (_r, vars) => {
-      runtime = { ...vars };
-    },
-  };
+    }
+  }
 }
 
 /** `a/b/c` → `["a", "a/b"]` (las carpetas que contienen la clave). */

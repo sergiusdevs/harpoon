@@ -123,7 +123,7 @@ fn unix_time() -> u64 {
 
 /// `YYYY-MM-DDTHH:MM:SSZ` sin dependencias de calendario.
 #[allow(clippy::many_single_char_names)]
-fn iso_now() -> String {
+pub(crate) fn iso_now() -> String {
     let secs = unix_time();
     let days = secs / 86_400;
     let rem = secs % 86_400;

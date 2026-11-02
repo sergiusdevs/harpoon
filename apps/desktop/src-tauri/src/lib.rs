@@ -39,6 +39,10 @@ struct ResponseDto {
     headers: IndexMap<String, String>,
     body: String,
     is_json: bool,
+    is_binary: bool,
+    /// Solo cuando `is_binary`: el cuerpo completo en base64.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body_base64: Option<String>,
     elapsed_ms: u128,
     size: usize,
 }
@@ -58,6 +62,9 @@ struct ExchangeDto {
 struct SendArgs {
     root: PathBuf,
     env: Option<String>,
+    /// Identificador de la solicitud (para el historial).
+    #[serde(default)]
+    key: String,
     request: Request,
 }
 
@@ -185,11 +192,36 @@ async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
     .await
     .map_err(|e| e.to_string())?;
     let res = &exec.response;
+    let binary = res.is_binary();
+    let checks_total = exec.assertions.len() + exec.tests.len();
+    let checks_passed = exec.assertions.iter().filter(|a| a.passed).count()
+        + exec.tests.iter().filter(|t| t.passed).count();
+    // El historial no bloquea el envío: si falla, se ignora.
+    let _ = harpoon_core::history::append(
+        &col.root,
+        &args.key,
+        harpoon_core::history::HistoryEntry {
+            at: harpoon_core::history::now_iso(),
+            env: args.env.clone(),
+            method: exec.prepared.method.to_string(),
+            url: exec.prepared.url.clone(),
+            status: res.status,
+            elapsed_ms: u64::try_from(res.elapsed_ms).unwrap_or(u64::MAX),
+            size: res.size,
+            headers: res.headers.clone(),
+            body: if binary { String::new() } else { res.text() },
+            truncated: binary,
+            checks_passed,
+            checks_total,
+        },
+    );
     Ok(ExchangeDto {
         response: ResponseDto {
             status: res.status,
-            is_json: res.is_json(),
-            body: res.text(),
+            is_json: !binary && res.is_json(),
+            is_binary: binary,
+            body_base64: binary.then(|| res.body_base64()),
+            body: if binary { String::new() } else { res.text() },
             headers: res.headers.clone(),
             elapsed_ms: res.elapsed_ms,
             size: res.size,
@@ -201,6 +233,20 @@ async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
         vars: exec.vars,
         passed: exec.passed,
     })
+}
+
+#[tauri::command]
+fn history(root: PathBuf, key: String) -> Result<Vec<harpoon_core::history::HistoryEntry>, String> {
+    let col = load(&root)?;
+    let mut entries = harpoon_core::history::load(&col.root, &key);
+    entries.reverse(); // más reciente primero
+    Ok(entries)
+}
+
+#[tauri::command]
+fn clear_history(root: PathBuf, key: String) -> Result<(), String> {
+    let col = load(&root)?;
+    harpoon_core::history::clear(&col.root, &key).map_err(|e| e.to_string())
 }
 
 /// Variables de ejecución actuales (`.harpoon/vars.toml`).
@@ -239,6 +285,8 @@ pub fn run() {
             list_folders,
             runtime_vars,
             save_runtime_vars,
+            history,
+            clear_history,
             send_request
         ])
         .run(tauri::generate_context!())

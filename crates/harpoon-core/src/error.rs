@@ -23,6 +23,9 @@ pub enum Error {
     #[error("error al serializar: {0}")]
     Serialize(#[from] toml::ser::Error),
 
+    #[error("error al serializar JSON: {0}")]
+    Json(#[from] serde_json::Error),
+
     #[error("variable sin definir: `{0}`")]
     UndefinedVariable(String),
 

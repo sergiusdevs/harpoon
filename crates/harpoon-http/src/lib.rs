@@ -85,6 +85,42 @@ impl Response {
             .map(|(_, v)| v.as_str())
     }
 
+    /// Heurística: `content-type` no textual o bytes no UTF-8 con NUL.
+    #[must_use]
+    pub fn is_binary(&self) -> bool {
+        let ct = self
+            .header("content-type")
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let textual = ct.starts_with("text/")
+            || ct.contains("json")
+            || ct.contains("xml")
+            || ct.contains("javascript")
+            || ct.contains("x-www-form-urlencoded")
+            || ct.contains("yaml")
+            || ct.contains("csv")
+            || ct.contains("html");
+        if textual {
+            return false;
+        }
+        if ct.starts_with("image/")
+            || ct.starts_with("audio/")
+            || ct.starts_with("video/")
+            || ct.contains("octet-stream")
+            || ct.contains("pdf")
+            || ct.contains("zip")
+        {
+            return true;
+        }
+        std::str::from_utf8(&self.body).is_err() || self.body.contains(&0)
+    }
+
+    /// Cuerpo en base64 (para transportar binarios al frontend).
+    #[must_use]
+    pub fn body_base64(&self) -> String {
+        base64(&self.body)
+    }
+
     #[must_use]
     pub fn is_json(&self) -> bool {
         self.header("content-type")
@@ -364,16 +400,25 @@ impl Client {
             }
         })?;
         let status = res.status().as_u16();
-        let headers = res
-            .headers()
-            .iter()
-            .map(|(k, v)| {
-                (
-                    k.to_string(),
-                    String::from_utf8_lossy(v.as_bytes()).into_owned(),
-                )
-            })
-            .collect();
+        let mut headers: IndexMap<String, String> = IndexMap::new();
+        for (k, v) in res.headers() {
+            let name = k.to_string();
+            let value = String::from_utf8_lossy(v.as_bytes()).into_owned();
+            match headers.get_mut(&name) {
+                // Varias `Set-Cookie` se separan con salto de línea; el resto con coma.
+                Some(existing) if name == "set-cookie" => {
+                    existing.push('\n');
+                    existing.push_str(&value);
+                }
+                Some(existing) => {
+                    existing.push_str(", ");
+                    existing.push_str(&value);
+                }
+                None => {
+                    headers.insert(name, value);
+                }
+            }
+        }
         let body = res.bytes().await.map_err(Error::Network)?.to_vec();
         let elapsed_ms = start.elapsed().as_millis();
         Ok(Response {
@@ -438,7 +483,8 @@ fn describe(err: &reqwest::Error) -> String {
     parts.join(": ")
 }
 
-pub(crate) fn base64(input: &[u8]) -> String {
+#[must_use]
+pub fn base64(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {

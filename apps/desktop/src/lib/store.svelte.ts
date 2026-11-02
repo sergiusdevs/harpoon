@@ -1,7 +1,7 @@
 // Estado global de la app con runes de Svelte 5.
 
 import { api, folderChain } from "./api";
-import { emptyRequest, type Collection, type CollectionMeta, type Environment, type Exchange, type Method, type Request } from "./types";
+import { emptyRequest, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type Request } from "./types";
 
 export type Status = { kind: "idle" | "ok" | "err" | "busy"; text: string };
 
@@ -26,6 +26,9 @@ class Store {
   /** Carpeta elegida que aún no tiene colección: se ofrece crearla. */
   pendingInit = $state<string | null>(null);
   dialog = $state<Dialog | null>(null);
+  history = $state<HistoryEntry[]>([]);
+  /** Entrada del historial que se está viendo (null = respuesta en vivo). */
+  viewingHistory = $state<HistoryEntry | null>(null);
   modal = $state<"environments" | "settings" | null>(null);
 
   // ---------- colección ----------
@@ -114,6 +117,32 @@ class Store {
     this.dirty = false;
     this.exchange = null;
     this.error = null;
+    this.viewingHistory = null;
+    void this.loadHistory();
+  }
+
+  async loadHistory() {
+    if (!this.collection || !this.selected) {
+      this.history = [];
+      return;
+    }
+    try {
+      this.history = await (await api).history(this.collection.root, this.selected);
+    } catch {
+      this.history = [];
+    }
+  }
+
+  async clearHistory() {
+    if (!this.collection || !this.selected) return;
+    await (await api).clearHistory(this.collection.root, this.selected);
+    this.history = [];
+    this.viewingHistory = null;
+  }
+
+  /** Muestra una respuesta antigua en el panel de respuesta. */
+  showHistory(entry: HistoryEntry | null) {
+    this.viewingHistory = entry;
   }
 
   touch() {
@@ -138,8 +167,10 @@ class Store {
     this.status = { kind: "busy", text: `${this.draft.method} ${this.draft.url}` };
     try {
       const req = structuredClone($state.snapshot(this.draft));
-      const x = await (await api).sendRequest(this.collection.root, this.env, req);
+      const x = await (await api).sendRequest(this.collection.root, this.env, req, this.selected ?? "");
       this.exchange = x;
+      this.viewingHistory = null;
+      void this.loadHistory();
       this.status = {
         kind: x.passed ? "ok" : "err",
         text: `${x.response.status} · ${x.response.elapsed_ms} ms · ${fmtSize(x.response.size)}`,

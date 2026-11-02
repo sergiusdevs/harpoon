@@ -132,6 +132,8 @@ export interface Exchange {
     headers: Record<string, string>;
     body: string;
     is_json: boolean;
+    is_binary?: boolean;
+    body_base64?: string;
     elapsed_ms: number;
     size: number;
   };
@@ -187,4 +189,19 @@ export function normalizeCollection(c: Collection): Collection {
     scripts: Object.assign({ pre: "", post: "", test: "" }, c.meta.scripts ?? {}),
   };
   return { ...c, meta, environments, requests };
+}
+
+export interface HistoryEntry {
+  at: string;
+  env?: string;
+  method: Method;
+  url: string;
+  status: number;
+  elapsed_ms: number;
+  size: number;
+  headers: Record<string, string>;
+  body: string;
+  truncated: boolean;
+  checks_passed: number;
+  checks_total: number;
 }
