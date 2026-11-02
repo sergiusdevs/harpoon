@@ -13,7 +13,7 @@
   let downloadError = $state("");
   let compareItems = $state<import("../../domain/types").HistoryEntry[]>([]);
   let comparing = $state(false);
-  $effect(() => { void store.selected; compareItems = []; comparing = false; });
+  $effect(() => { void store.selected; void store.history; compareItems = []; comparing = false; });
   function toggleCompare(item: import("../../domain/types").HistoryEntry) {
     compareItems = compareItems.includes(item) ? compareItems.filter((entry) => entry !== item) : [...compareItems.slice(-1), item];
   }
