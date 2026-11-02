@@ -343,6 +343,10 @@ pub fn read(path: &Path) -> Result<Preview> {
     }
     let data = fs::read(path).map_err(|e| err(e.to_string()))?;
     let v: Value = serde_json::from_slice(&data)?;
+    parse(&v)
+}
+
+pub(crate) fn parse(v: &Value) -> Result<Preview> {
     let schema = text(&v["info"], "schema");
     if !schema.contains("collection/v2.1.0/") {
         return Err(err("se requiere una colección Postman v2.1"));

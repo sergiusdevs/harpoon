@@ -45,6 +45,8 @@ enum Command {
     PostmanExport { file: PathBuf },
     /// Importa una colección Postman v2.1 a un directorio nuevo.
     PostmanImport { file: PathBuf, dir: PathBuf },
+    /// Importa un documento `OpenAPI` 3.0 o 3.1 en JSON o YAML.
+    OpenapiImport { file: PathBuf, dir: PathBuf },
     /// Lista las solicitudes y entornos de la colección.
     List,
     /// Envía una solicitud y muestra la respuesta.
@@ -110,6 +112,15 @@ async fn run() -> anyhow::Result<ExitCode> {
                 col.root.display()
             );
             println!("Prueba: cd {} && harpoon list", dir.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::OpenapiImport { file, dir } => {
+            let preview = harpoon_core::openapi::read(&file)?;
+            for warning in &preview.warnings {
+                eprintln!("Aviso: {warning}");
+            }
+            let col = harpoon_core::postman::import(&preview, &dir)?;
+            println!("Colección importada en {}", col.root.display());
             Ok(ExitCode::SUCCESS)
         }
         Command::PostmanExport { file } => {

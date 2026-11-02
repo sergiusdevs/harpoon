@@ -33,6 +33,8 @@ export interface Api {
   exportPostman(root: string, name: string): Promise<string[] | null>;
   previewPostman(path: string): Promise<SharePreview>;
   importPostman(path: string, parent: string, name: string): Promise<Collection>;
+  previewOpenapi(path: string): Promise<SharePreview>;
+  importOpenapi(path: string, parent: string, name: string): Promise<Collection>;
   listCookies(root: string): Promise<StoredCookie[]>;
   addCookie(root: string, url: string, cookie: string): Promise<void>;
   removeCookie(root: string, domain: string, path: string, name: string): Promise<void>;
@@ -96,6 +98,8 @@ async function tauriApi(): Promise<Api> {
     },
     previewPostman: (path) => invoke<SharePreview>("preview_postman", { path }),
     importPostman: (path, parent, name) => col("import_postman", { path, parent, name }),
+    previewOpenapi: (path) => invoke<SharePreview>("preview_openapi", { path }),
+    importOpenapi: (path, parent, name) => col("import_openapi", { path, parent, name }),
     listCookies: (root) => invoke<StoredCookie[]>("list_cookies", { root }),
     addCookie: (root, url, cookie) => invoke("add_cookie", { root, url, cookie }),
     removeCookie: (root, domain, path, name) => invoke("remove_cookie", { root, domain, path, name }),
@@ -312,6 +316,8 @@ function mockApi(): Api {
     exportPostman: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     previewPostman: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     importPostman: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    previewOpenapi: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    importOpenapi: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     listCookies: async () => structuredClone(mockCookies),
     addCookie: async (_root, url, cookie) => {
       const parsed = new URL(url), pair = cookie.split(";", 1)[0], at = pair.indexOf("=");

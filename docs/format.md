@@ -186,3 +186,11 @@ básica, bearer, digest o API key. Los scripts se conservan, pero hay que revisa
 su compatibilidad. Se muestran avisos para opciones no trasladadas: entre otras,
 OAuth 2, variables de carpeta, entornos, aserciones y archivos adjuntos. Las
 credenciales presentes en las solicitudes pueden quedar en el archivo exportado.
+
+## Importación OpenAPI
+
+La app y `harpoon openapi-import openapi.yaml ./nueva-coleccion` aceptan
+documentos OpenAPI 3.0 y 3.1 en YAML o JSON. Se generan solicitudes agrupadas
+por su primera etiqueta, con servidores, parámetros y ejemplos disponibles.
+Se indican los datos que requieren configuración manual. Las referencias
+externas, esquemas, respuestas y validaciones no se convierten.

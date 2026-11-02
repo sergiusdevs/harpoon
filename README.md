@@ -68,6 +68,7 @@ harpoon share-export api.harpoon.json  # exporta la colección sin estado local
 harpoon share-import api.harpoon.json ./api-compartida
 harpoon postman-export api.postman_collection.json
 harpoon postman-import api.postman_collection.json ./api-importada
+harpoon openapi-import openapi.yaml ./api-openapi
 ```
 
 Códigos de salida: `0` todo correcto, `1` alguna comprobación falló, `2` error de uso o de red.

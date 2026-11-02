@@ -372,6 +372,27 @@ fn preview_postman(path: PathBuf) -> Result<harpoon_core::postman::Preview, Stri
 }
 
 #[tauri::command]
+fn preview_openapi(path: PathBuf) -> Result<harpoon_core::postman::Preview, String> {
+    harpoon_core::openapi::read(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_openapi(path: PathBuf, parent: PathBuf, name: String) -> Result<CollectionDto, String> {
+    let mut parts = Path::new(&name).components();
+    if name.is_empty()
+        || !matches!(parts.next(), Some(std::path::Component::Normal(_)))
+        || parts.next().is_some()
+        || name.contains(['/', '\\'])
+    {
+        return Err("Nombre de carpeta no válido".into());
+    }
+    let collection = harpoon_core::openapi::read(&path).map_err(|e| e.to_string())?;
+    harpoon_core::postman::import(&collection, &parent.join(name))
+        .map(Into::into)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn import_postman(path: PathBuf, parent: PathBuf, name: String) -> Result<CollectionDto, String> {
     let mut parts = Path::new(&name).components();
     if name.is_empty()
@@ -474,6 +495,8 @@ pub fn run() {
             export_postman,
             preview_postman,
             import_postman,
+            preview_openapi,
+            import_openapi,
             list_cookies,
             add_cookie,
             remove_cookie,

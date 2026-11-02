@@ -3,7 +3,7 @@
   import { api, isMock, type SharePreview } from "../../services/api";
   import Modal from "../common/Modal.svelte";
   let mode = $state<"export" | "import">(store.collection ? "export" : "import");
-  let format = $state<"harpoon" | "postman">("harpoon");
+  let format = $state<"harpoon" | "postman" | "openapi">("harpoon");
   let source = $state("");
   let parent = $state("");
   let name = $state("");
@@ -18,7 +18,7 @@
       const path = await (await api).pickFile();
       if (!path) return;
       const bridge = await api;
-      const data = await (format === "postman" ? bridge.previewPostman(path) : bridge.previewHarpoon(path));
+      const data = await (format === "openapi" ? bridge.previewOpenapi(path) : format === "postman" ? bridge.previewPostman(path) : bridge.previewHarpoon(path));
       source = path; preview = data; name = slug(data.name) || "coleccion";
     } catch (e) { source = ""; preview = null; error = String(e); }
   }
@@ -41,15 +41,15 @@
     try {
       busy = true; error = "";
       const bridge = await api;
-      const col = await (format === "postman" ? bridge.importPostman(source, parent, folder) : bridge.importHarpoon(source, parent, folder));
+      const col = await (format === "openapi" ? bridge.importOpenapi(source, parent, folder) : format === "postman" ? bridge.importPostman(source, parent, folder) : bridge.importHarpoon(source, parent, folder));
       store.modal = null;
       await store.open(col.root);
     } catch (e) { error = String(e); } finally { busy = false; }
   }
 </script>
 <Modal title="Compartir colección" width={700} onclose={() => (store.modal = null)}>
-  <div class="segmented"><button class:active={mode === "export"} aria-pressed={mode === "export"} disabled={!store.collection} onclick={() => { mode = "export"; error = ""; }}>Exportar</button><button class:active={mode === "import"} aria-pressed={mode === "import"} onclick={() => { mode = "import"; error = ""; }}>Importar</button></div>
-  <label class="format">Formato<select bind:value={format} onchange={() => { source = ""; preview = null; warnings = []; message = ""; error = ""; }}><option value="harpoon">Harpoon</option><option value="postman">Postman v2.1</option></select></label>
+  <div class="segmented"><button class:active={mode === "export"} aria-pressed={mode === "export"} disabled={!store.collection || format === "openapi"} onclick={() => { mode = "export"; error = ""; }}>Exportar</button><button class:active={mode === "import"} aria-pressed={mode === "import"} onclick={() => { mode = "import"; error = ""; }}>Importar</button></div>
+  <label class="format">Formato<select bind:value={format} onchange={() => { if (format === "openapi") mode = "import"; source = ""; preview = null; warnings = []; message = ""; error = ""; }}><option value="harpoon">Harpoon</option><option value="postman">Postman v2.1</option><option value="openapi">OpenAPI 3 (importar)</option></select></label>
   {#if isMock}<p class="muted hint">Disponible en la aplicación de escritorio.</p>{/if}
   {#if mode === "export"}
     <p class="muted hint">{format === "harpoon" ? "El archivo incluye la colección y sus entornos públicos. No incluye secretos de entorno, cookies ni historial." : "Postman exporta la colección sin entornos ni archivos adjuntos. Se mostrarán avisos para los datos no compatibles."} Las credenciales escritas directamente en las solicitudes sí se incluyen.</p>
