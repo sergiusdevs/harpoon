@@ -49,11 +49,16 @@ export function normalizeAuth(a: Auth | undefined): Auth {
   return a;
 }
 
+export type MultipartPart =
+  | { type: "text"; name: string; value: string }
+  | { type: "file"; name: string; path: string; content_type?: string };
+
 export type Body =
   | { type: "none" }
   | { type: "json"; json: string }
   | { type: "text"; text: string }
-  | { type: "form"; fields: Record<string, string> };
+  | { type: "form"; fields: Record<string, string> }
+  | { type: "multipart"; parts: MultipartPart[] };
 
 export interface Expect {
   status?: number;
@@ -111,6 +116,7 @@ export interface Collection {
   meta: CollectionMeta;
   environments: Record<string, Environment>;
   requests: Record<string, Request>;
+  folder_configs: Record<string, { vars: Record<string, string> }>;
 }
 
 export interface Outcome {
@@ -126,6 +132,7 @@ export interface Exchange {
     headers: Record<string, string>;
     query: Record<string, string>;
     body?: string;
+    multipart?: MultipartPart[];
   };
   response: {
     status: number;
@@ -188,7 +195,7 @@ export function normalizeCollection(c: Collection): Collection {
     settings: Object.assign({ timeout_ms: 30000, follow_redirects: true, insecure: false }, c.meta.settings ?? {}),
     scripts: Object.assign({ pre: "", post: "", test: "" }, c.meta.scripts ?? {}),
   };
-  return { ...c, meta, environments, requests };
+  return { ...c, meta, environments, requests, folder_configs: c.folder_configs ?? {} };
 }
 
 export interface HistoryEntry {

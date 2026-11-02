@@ -1,21 +1,109 @@
 <script lang="ts">
-  import { store } from "./store.svelte";
-  import { METHODS, type Auth, type Body } from "./types";
-  import CodeEditor from "./CodeEditor.svelte";
-  import KeyValue from "./KeyValue.svelte";
+  import { store } from "../../state/store.svelte";
+  import { METHODS, type Auth, type Body } from "../../domain/types";
+  import CodeEditor from "../common/CodeEditor.svelte";
+  import KeyValue from "../common/KeyValue.svelte";
   import AuthForm from "./AuthForm.svelte";
-  import MethodBadge from "./MethodBadge.svelte";
+  import MethodBadge from "../common/MethodBadge.svelte";
+  import VariableInput from "../common/VariableInput.svelte";
+  import { api } from "../../services/api";
+  import ResponsePane from "../response/ResponsePane.svelte";
+  import Splitter from "../common/Splitter.svelte";
+  import { folderChain } from "../../domain/paths";
+  import { variableSuggestions } from "../../domain/variables";
+  import { parseCurl } from "../../domain/curl";
+  import CurlExport from "./CurlExport.svelte";
+  import MultipartEditor from "./MultipartEditor.svelte";
+  let exportingCurl = $state(false);
+
+  let editorWidth = $state(0.48);
+  let panels = $state<HTMLDivElement>();
+  function resizePanels(delta: number) {
+    if (panels?.clientWidth) editorWidth = Math.min(0.8, Math.max(0.2, editorWidth + delta / panels.clientWidth));
+  }
+
+  const headerSuggestions = [
+    "Accept", "Accept-Charset", "Accept-Encoding", "Accept-Language", "Authorization",
+    "Cache-Control", "Connection", "Content-Encoding", "Content-Language", "Content-Length",
+    "Content-Type", "Cookie", "Date", "ETag", "Expect", "Host", "If-Match",
+    "If-Modified-Since", "If-None-Match", "If-Unmodified-Since", "Origin", "Pragma",
+    "Range", "Referer", "User-Agent", "X-API-Key", "X-Request-ID", "X-Requested-With",
+  ];
 
   type Tab = "params" | "headers" | "body" | "auth" | "expect" | "scripts" | "tests" | "docs";
   let tab = $state<Tab>("params");
 
   const req = $derived(store.draft);
+  const variables = $derived.by(() => {
+    const col = store.collection;
+    if (!col) return [];
+    const layers = [{ source: "Colección", names: Object.keys(col.meta.vars) }];
+    for (const folder of folderChain(store.selected ?? "")) {
+      layers.push({ source: `Carpeta · ${folder}`, names: Object.keys(col.folder_configs[folder]?.vars ?? {}) });
+    }
+    const env = store.env ?? col.meta.default_environment;
+    if (env) layers.push({ source: `Entorno · ${env}`, names: Object.keys(col.environments[env]?.vars ?? {}) });
+    layers.push({ source: "Ejecución", names: Object.keys(store.runtimeVariables) });
+    return variableSuggestions(layers);
+  });
+  let resolvedUrl = $state("");
+  let urlError = $state("");
+  $effect(() => {
+    const root = store.collection?.root;
+    const key = store.selected;
+    const env = store.env;
+    const url = req?.url;
+    // La colección cambia tras guardar variables o entornos.
+    void store.collection?.folder_configs;
+    void store.collection?.environments;
+    void store.collection?.meta.vars;
+    let active = true;
+    if (root && key && url) {
+      (async () => {
+        try {
+          const value = await (await api).resolveUrl(root, key, env, url);
+          if (active) { resolvedUrl = value; urlError = ""; }
+        } catch (e) { if (active) { resolvedUrl = ""; urlError = String(e); } }
+      })();
+    } else { resolvedUrl = ""; urlError = ""; }
+    return () => { active = false; };
+  });
   const count = (o: Record<string, unknown>) => Object.keys(o).length;
 
   function set<K extends keyof NonNullable<typeof req>>(k: K, v: NonNullable<typeof req>[K]) {
     if (!store.draft) return;
     store.draft[k] = v;
     store.touch();
+  }
+
+  function pasteCurl(event: ClipboardEvent) {
+    const text = event.clipboardData?.getData("text") ?? "";
+    if (!/^\s*curl(?:\s|$)/.test(text)) return;
+    event.preventDefault();
+    try {
+      const imported = parseCurl(text);
+      const selected = store.selected;
+      const apply = () => {
+        if (!store.draft || store.selected !== selected) return;
+        Object.assign(store.draft, {
+          method: imported.method, url: imported.url, headers: imported.headers,
+          query: imported.query, body: imported.body, auth: imported.auth,
+        });
+        store.touch();
+        store.status = { kind: "ok", text: "Solicitud rellenada desde cURL · guarda los cambios" };
+      };
+      const current = store.draft;
+      const hasContent = current && (Object.keys(current.headers).length > 0 || Object.keys(current.query).length > 0 || current.body.type !== "none" || !["none", "inherit"].includes(current.auth.type));
+      if (hasContent) {
+        store.dialog = {
+          kind: "confirm", title: "Importar cURL en esta solicitud",
+          text: "Se sustituirán el método, la URL, los parámetros, las cabeceras, el cuerpo y la autenticación actuales.",
+          ok: "Sustituir", onOk: apply,
+        };
+      } else apply();
+    } catch (error) {
+      store.status = { kind: "err", text: `No se pudo importar cURL: ${error instanceof Error ? error.message : String(error)}` };
+    }
   }
 
   const bodyText = $derived(
@@ -26,7 +114,7 @@
   function setBodyKind(kind: Body["type"]) {
     const text = bodyText;
     const next: Body =
-      kind === "json" ? { type: "json", json: text } : kind === "text" ? { type: "text", text } : kind === "form" ? { type: "form", fields: {} } : { type: "none" };
+      kind === "json" ? { type: "json", json: text } : kind === "text" ? { type: "text", text } : kind === "form" ? { type: "form", fields: {} } : kind === "multipart" ? { type: "multipart", parts: [] } : { type: "none" };
     set("body", next);
   }
 
@@ -74,28 +162,50 @@
         aria-label="Nombre de la solicitud"
         spellcheck="false"
       />
+      {#if store.dirty}<span class="unsaved">Sin guardar</span>{/if}
       <span class="key mono muted" title="Archivo"><MethodBadge method={req.method} compact={false} /> {store.selected}.toml</span>
     </div>
     <div class="urlbar">
-      <select class="method-select method {req.method}" value={req.method} onchange={(e) => set("method", e.currentTarget.value as typeof req.method)}>
-        {#each METHODS as m}<option value={m}>{m}</option>{/each}
-      </select>
-      <input
-        class="url mono"
-        value={req.url}
-        oninput={(e) => set("url", e.currentTarget.value)}
-        title={req.name}
-        onkeydown={(e) => e.key === "Enter" && store.send()}
-        placeholder="{'{{base_url}}'}/ruta"
-        spellcheck="false"
-      />
-      <button class="btn primary" onclick={() => store.send()} disabled={store.sending}>
+      <div class="address">
+        <div class="method-wrap">
+          <select aria-label="Método HTTP" class="method-select method {req.method}" value={req.method} onchange={(e) => set("method", e.currentTarget.value as typeof req.method)}>
+            {#each METHODS as m}<option value={m}>{m}</option>{/each}
+          </select>
+          <svg class="method-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </div>
+        <div class="url">
+          <VariableInput
+            value={req.url}
+            oninput={(e) => set("url", e.currentTarget.value)}
+            onkeydown={(e) => e.key === "Enter" && store.send()}
+            onpaste={pasteCurl}
+            placeholder={'{{base_url}}/ruta'}
+            label="URL de la solicitud"
+            integrated
+            {variables}
+          />
+        </div>
+        <button class="btn icon save" onclick={() => store.save()} disabled={!store.dirty} title="Guardar (⌘S)" aria-label="Guardar solicitud">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2z"/><path d="M7 3v6h10V4M7 21v-8h10v8"/></svg>
+        </button>
+        <button class="btn icon save" title="Exportar como cURL" aria-label="Exportar como cURL" onclick={() => (exportingCurl = true)}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 8-4 4 4 4m8-8 4 4-4 4m-2-12-4 16" /></svg>
+        </button>
+      </div>
+      <button class="btn variables-button" onclick={() => (store.modal = "variables")} title="Ver variables de esta solicitud">Variables</button>
+      <button class="btn primary send" onclick={() => store.send()} disabled={store.sending}>
         {#if store.sending}<span class="pulse">Enviando</span>{:else}Enviar{/if}
-        <kbd>⌘↩</kbd>
       </button>
-      <button class="btn" onclick={() => store.save()} disabled={!store.dirty} title="Guardar (⌘S)">Guardar</button>
     </div>
 
+    {#if req.url.includes("{{")}
+      <div class="resolved-url" title={urlError || resolvedUrl}>
+        <span class="muted">URL resuelta</span>
+        <span class:unresolved={!!urlError} class="mono">{urlError || resolvedUrl || "Resolviendo…"}</span>
+      </div>
+    {/if}
+    <div class="panels" bind:this={panels}>
+      <div class="request-editor" style:width={`${editorWidth * 100}%`}>
     <div class="tabs" role="tablist" aria-label="Secciones de la solicitud">
       <button class="tab" role="tab" aria-selected={tab === "params"} class:active={tab === "params"} onclick={() => (tab = "params")}>Params {#if count(req.query)}<span class="count">{count(req.query)}</span>{/if}</button>
       <button class="tab" role="tab" aria-selected={tab === "headers"} class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers {#if count(req.headers)}<span class="count">{count(req.headers)}</span>{/if}</button>
@@ -109,14 +219,14 @@
 
     <div class="content">
       {#if tab === "params"}
-        <KeyValue entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
+        <KeyValue {variables} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
       {:else if tab === "headers"}
-        <KeyValue entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" />
+        <KeyValue {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} />
       {:else if tab === "body"}
         <div class="body">
           <div class="body-bar">
             <div class="segmented" role="radiogroup" aria-label="Tipo de cuerpo">
-              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["text", "Texto"], ["form", "Formulario"]] as [k, label]}
+              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["text", "Texto"], ["form", "Formulario"], ["multipart", "Multipart"]] as [k, label]}
                 <button role="radio" aria-checked={bodyKind === k} class:active={bodyKind === k} onclick={() => setBodyKind(k as Body["type"])}>{label}</button>
               {/each}
             </div>
@@ -130,7 +240,9 @@
               <CodeEditor value={bodyText} language={bodyKind === "json" ? "json" : "text"} onchange={setBodyText} />
             </div>
           {:else if bodyKind === "form"}
-            <KeyValue entries={req.body.type === "form" ? req.body.fields : {}} onchange={(fields) => set("body", { type: "form", fields })} keyPlaceholder="campo" addLabel="Añadir campo" />
+            <KeyValue {variables} entries={req.body.type === "form" ? req.body.fields : {}} onchange={(fields) => set("body", { type: "form", fields })} keyPlaceholder="campo" addLabel="Añadir campo" />
+          {:else if bodyKind === "multipart"}
+            <MultipartEditor parts={req.body.type === "multipart" ? req.body.parts : []} {variables} onchange={(parts) => set("body", { type: "multipart", parts })} />
           {:else}
             <div class="nobody">
               <p class="muted">Esta solicitud no envía cuerpo.</p>
@@ -150,7 +262,7 @@
           <label><span>Tiempo máx. (ms)</span><input class="mono" type="number" value={req.expect.max_time_ms ?? ""} oninput={(e) => set("expect", { ...req.expect, max_time_ms: e.currentTarget.value ? Number(e.currentTarget.value) : undefined })} placeholder="500" /></label>
           <label><span>El cuerpo contiene</span><input class="mono" value={req.expect.body_contains.join(" | ")} oninput={(e) => set("expect", { ...req.expect, body_contains: e.currentTarget.value.split("|").map((s) => s.trim()).filter(Boolean) })} placeholder={'"id" | "name"  (separar con |)'} /></label>
           <div class="sub">Cabeceras esperadas</div>
-          <KeyValue entries={req.expect.headers} onchange={(headers) => set("expect", { ...req.expect, headers })} keyPlaceholder="Cabecera" />
+          <KeyValue entries={req.expect.headers} onchange={(headers) => set("expect", { ...req.expect, headers })} keyPlaceholder="Cabecera" suggestions={headerSuggestions} />
         </div>
       {:else if tab === "scripts"}
         <div class="scripts">
@@ -176,12 +288,20 @@
         </div>
       {/if}
     </div>
+      </div>
+      <Splitter onresize={resizePanels} />
+      <div class="response-panel"><ResponsePane /></div>
+    </div>
   </section>
 {:else}
   <section class="pane center">
-    <p class="muted">Selecciona una solicitud</p>
+    <div class="empty-icon" aria-hidden="true">↗</div>
+    <p class="empty-title">Tu espacio de trabajo</p>
+    <p class="muted empty-hint">Selecciona una solicitud de la colección para empezar.</p>
   </section>
 {/if}
+
+{#if exportingCurl}<CurlExport onclose={() => (exportingCurl = false)} />{/if}
 
 <style>
   .pane {
@@ -190,15 +310,26 @@
     height: 100%;
     min-width: 0;
   }
+  .panels { flex: 1; display: flex; min-height: 0; min-width: 0; padding: 0 20px 16px; }
+  .request-editor { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0; min-width: 0; overflow: hidden; }
+  .response-panel { flex: 1; min-height: 0; min-width: 0; }
   .center {
     align-items: center;
     justify-content: center;
   }
+  .empty-icon {
+    display: grid; place-items: center; width: 42px; height: 42px;
+    border: 1px solid var(--border-strong); border-radius: 12px;
+    color: var(--accent); font-size: 22px; margin-bottom: 10px;
+  }
+  .empty-title { margin: 0; font-size: 14px; font-weight: 600; }
+  .empty-hint { margin: 6px 24px 0; text-align: center; }
   .namebar {
+    flex: 0 0 auto;
     display: flex;
     align-items: baseline;
     gap: 10px;
-    padding: 10px 12px 0;
+    padding: 12px 20px 0;
   }
   .name-input {
     flex: 1;
@@ -213,21 +344,35 @@
   .name-input:hover {
     border-color: var(--border);
   }
+  .unsaved { color: var(--warn); font-size: 11px; white-space: nowrap; }
   .key {
     font-size: 11px;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 45%;
     display: inline-flex;
     align-items: center;
     gap: 8px;
   }
   .urlbar {
+    flex: 0 0 auto;
     display: flex;
     gap: 8px;
-    padding: 8px 12px 10px;
+    padding: 10px 20px 12px;
     align-items: center;
+    flex-wrap: wrap;
   }
+  .address { display: flex; flex: 1 1 240px; min-width: 0; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg); }
+  .address:focus-within { border-color: var(--accent); }
+  .address .save { margin: 0 6px; flex: 0 0 auto; }
+  .send { justify-content: center; min-width: 92px; min-height: 38px; }
+  .resolved-url { flex: 0 0 auto; display: flex; gap: 8px; padding: 0 20px 9px; font-size: 11px; min-width: 0; }
+  .resolved-url span:last-child { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+  .resolved-url span.unresolved { color: var(--warn); }
   .body-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
   }
@@ -245,27 +390,29 @@
   .nobody p {
     margin: 0;
   }
+  .method-wrap { position: relative; flex: 0 0 96px; display: flex; align-items: center; }
+  .method-chevron { position: absolute; right: 10px; color: var(--text-muted); pointer-events: none; }
   .method-select {
-    width: 100px;
-    padding: 6px 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    padding: 10px 26px 10px 12px;
+    cursor: pointer;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
     font-weight: 700;
   }
+  .method-select:focus-visible { outline: none; box-shadow: none; }
   .url {
-    flex: 1;
-    min-width: 0;
-    padding: 6px 10px;
-    font-size: 12.5px;
-  }
-  kbd {
-    font: 10px var(--mono);
-    opacity: 0.6;
-    margin-left: 2px;
+    flex: 1 1 140px;
+    min-width: 100px;
   }
   .content {
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: 8px 12px 12px;
+    padding: 16px 20px 20px;
   }
   .body {
     display: flex;

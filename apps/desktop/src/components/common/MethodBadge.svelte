@@ -1,6 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
-  import type { Method } from "./types";
+  import type { Method } from "../../domain/types";
 
   interface Props {
     method: Method;
@@ -13,7 +13,7 @@
 </script>
 
 <span class="badge {method}" title={method}>
-  <Icon name={icon} size={11} />
+  <Icon name={icon} size={9} />
   <span>{compact ? short[method] : method}</span>
 </span>
 
@@ -21,14 +21,14 @@
   .badge {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 1px 6px 1px 5px;
+    gap: 3px;
+    padding: 0 5px 0 4px;
     border-radius: 4px;
     font-family: var(--mono);
-    font-size: 10.5px;
+    font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.02em;
-    line-height: 16px;
+    line-height: 15px;
     background: color-mix(in srgb, currentColor 14%, transparent);
     white-space: nowrap;
   }

@@ -20,6 +20,7 @@ struct CollectionDto {
     meta: CollectionMeta,
     environments: IndexMap<String, Environment>,
     requests: IndexMap<String, Request>,
+    folder_configs: IndexMap<String, harpoon_core::collection::FolderConfig>,
 }
 
 impl From<Collection> for CollectionDto {
@@ -29,6 +30,7 @@ impl From<Collection> for CollectionDto {
             meta: c.meta,
             environments: c.environments,
             requests: c.requests,
+            folder_configs: c.folder_configs,
         }
     }
 }
@@ -126,6 +128,33 @@ fn delete_folder(root: PathBuf, folder: String) -> Result<CollectionDto, String>
 }
 
 #[tauri::command]
+fn save_folder_vars(
+    root: PathBuf,
+    folder: String,
+    vars: IndexMap<String, String>,
+) -> Result<CollectionDto, String> {
+    let mut col = load(&root)?;
+    col.save_folder_vars(&folder, vars)
+        .map_err(|e| e.to_string())?;
+    Ok(col.into())
+}
+
+#[tauri::command]
+fn resolve_url(
+    root: PathBuf,
+    key: String,
+    env: Option<String>,
+    url: String,
+) -> Result<String, String> {
+    let col = load(&root)?;
+    col.scope_for_request(env.as_deref(), &key)
+        .map_err(|e| e.to_string())?
+        .with_layer(col.load_runtime_vars())
+        .interpolate(&url)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn save_environment(
     root: PathBuf,
     name: String,
@@ -179,15 +208,62 @@ fn list_folders(root: PathBuf) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+#[derive(Serialize)]
+struct CurlPrepared {
+    request: Prepared,
+    digest: Option<DigestCredentials>,
+    settings: harpoon_core::Settings,
+}
+
+#[derive(Serialize)]
+struct DigestCredentials {
+    username: String,
+    password: String,
+}
+
+#[tauri::command]
+fn prepare_curl(
+    root: PathBuf,
+    key: String,
+    env: Option<String>,
+    request: Request,
+) -> Result<CurlPrepared, String> {
+    let col = load(&root)?;
+    let prepared = harpoon_script::runner::prepare_for_export(&col, &request, env.as_deref(), &key)
+        .map_err(|e| e.to_string())?;
+    let digest = match &prepared.pending_auth {
+        Some(harpoon_http::auth::Pending::Digest { username, password }) => Some(DigestCredentials { username: username.clone(), password: password.clone() }),
+        Some(harpoon_http::auth::Pending::OAuth2(_)) => return Err("OAuth2 necesita obtener un token al enviar. No se puede exportar automáticamente a cURL.".into()),
+        None => None,
+    };
+    let mut settings = col.meta.settings.clone();
+    for value in [
+        &mut settings.ca_cert,
+        &mut settings.client_cert,
+        &mut settings.client_key,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        *value = col.root.join(&*value).to_string_lossy().into_owned();
+    }
+    Ok(CurlPrepared {
+        request: prepared,
+        digest,
+        settings,
+    })
+}
+
 #[tauri::command]
 async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
     let col = load(&args.root)?;
     let client = Client::for_collection(&col).map_err(|e| e.to_string())?;
-    let exec = harpoon_script::runner::execute_persistent(
+    let exec = harpoon_script::runner::execute_persistent_for_key(
         &client,
         &col,
         &args.request,
         args.env.as_deref(),
+        &args.key,
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -236,6 +312,11 @@ async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
 }
 
 #[tauri::command]
+fn save_response_file(path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
+    std::fs::write(path, bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn history(root: PathBuf, key: String) -> Result<Vec<harpoon_core::history::HistoryEntry>, String> {
     let col = load(&root)?;
     let mut entries = harpoon_core::history::load(&col.root, &key);
@@ -279,14 +360,18 @@ pub fn run() {
             create_folder,
             rename_folder,
             delete_folder,
+            save_folder_vars,
+            resolve_url,
             save_environment,
             delete_environment,
             save_meta,
             list_folders,
             runtime_vars,
             save_runtime_vars,
+            save_response_file,
             history,
             clear_history,
+            prepare_curl,
             send_request
         ])
         .run(tauri::generate_context!())

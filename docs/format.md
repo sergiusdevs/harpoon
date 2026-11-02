@@ -77,7 +77,7 @@ notify = "true"
 [auth]                          # inherit (por defecto) | none | basic | bearer | api_key | digest | oauth2 (ver docs/auth.md)
 type = "inherit"
 
-[body]                          # none | json | text | form
+[body]                          # none | json | text | form | multipart
 type = "json"
 json = '''
 { "name": "Ada", "email": "ada@example.com" }
@@ -99,6 +99,33 @@ test('crea el usuario', () => {
 """
 ```
 
+
+### Formularios multipart y archivos
+
+Para enviar campos y archivos en una misma solicitud:
+
+```toml
+[body]
+type = "multipart"
+
+[[body.parts]]
+type = "text"
+name = "description"
+value = "Informe de {{project}}"
+
+[[body.parts]]
+type = "file"
+name = "attachment"
+path = "fixtures/report.pdf"
+content_type = "application/pdf" # opcional; se deduce de la extensión
+```
+
+Las rutas relativas parten de la raíz de la colección; también se admiten rutas
+absolutas y variables. Los archivos se leen al enviar y no se copian al TOML.
+Se permite repetir nombres de campo. No definas una cabecera `Content-Type`
+manual: Harpoon genera el límite multipart automáticamente. En los scripts,
+`harpoon.req.body` no expone ni modifica las partes multipart.
+
 ## Variables
 
 - Sintaxis: `{{nombre}}` (espacios internos permitidos: `{{ nombre }}`).
@@ -111,3 +138,18 @@ test('crea el usuario', () => {
 
 - `format` se incrementa solo en cambios incompatibles; `harpoon` migra con `harpoon migrate`.
 - Claves desconocidas se conservan al reescribir (fase 1, `toml_edit`).
+
+### Variables por carpeta
+
+Cada carpeta dentro de `requests/` puede incluir un `folder.toml`:
+
+```toml
+[vars]
+api_path = "/api/v1/users"
+```
+
+Estas variables se aplican a las solicitudes de esa carpeta y sus descendientes.
+La prioridad, de menor a mayor, es colección, carpetas desde la raíz hasta la
+más cercana, entorno y variables de ejecución. Las variables de carpeta se
+versionan con la colección; guarda los secretos en los archivos de entorno privados.
+En la app se editan desde el menú contextual de la carpeta.

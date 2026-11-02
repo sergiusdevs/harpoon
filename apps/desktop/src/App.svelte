@@ -1,31 +1,43 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { store } from "./lib/store.svelte";
-  import { isMock } from "./lib/api";
-  import Sidebar from "./lib/Sidebar.svelte";
-  import RequestPane from "./lib/RequestPane.svelte";
-  import ResponsePane from "./lib/ResponsePane.svelte";
-  import Splitter from "./lib/Splitter.svelte";
-  import Dialog from "./lib/Dialog.svelte";
-  import EnvEditor from "./lib/EnvEditor.svelte";
-  import CollectionSettings from "./lib/CollectionSettings.svelte";
+  import { store } from "./state/store.svelte";
+  import { isMock } from "./services/api";
+  import Sidebar from "./components/collection/Sidebar.svelte";
+  import RequestPane from "./components/request/RequestPane.svelte";
+  import Splitter from "./components/common/Splitter.svelte";
+  import Dialog from "./components/common/Dialog.svelte";
+  import EnvEditor from "./components/collection/EnvEditor.svelte";
+  import CollectionSettings from "./components/collection/CollectionSettings.svelte";
+  import FolderSettings from "./components/collection/FolderSettings.svelte";
+  import EnvironmentSelect from "./components/collection/EnvironmentSelect.svelte";
+  import ThemePicker from "./components/settings/ThemePicker.svelte";
+  import CurlImport from "./components/request/CurlImport.svelte";
+  import VariableInspector from "./components/request/VariableInspector.svelte";
 
   let sidebarW = $state(250);
-  let requestW = $state(0.5); // fracción del área de trabajo
-  let workspace: HTMLDivElement;
 
   onMount(() => {
     store.restore();
     if (isMock && !store.collection) void store.open("mock");
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (store.dirty) { event.preventDefault(); event.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    let unlisten: (() => void) | undefined;
+    if (!isMock) void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
+      const window = getCurrentWindow();
+      unlisten = await window.onCloseRequested((event) => {
+        if (!store.dirty) return;
+        event.preventDefault();
+        store.confirmDiscard(() => window.close());
+      });
+    });
+    return () => { window.removeEventListener("beforeunload", beforeUnload); unlisten?.(); };
   });
 
-  function resizeRequest(delta: number) {
-    const total = workspace.clientWidth - sidebarW;
-    requestW = Math.min(0.8, Math.max(0.2, requestW + delta / total));
-  }
 </script>
 
-<div class="app" bind:this={workspace}>
+<div class="app">
   <div class="col sidebar" style="width: {sidebarW}px">
     <Sidebar />
   </div>
@@ -42,42 +54,12 @@
         {/if}
       </span>
       {#if store.collection}
-        <label class="env">
-          <span class="muted" id="env-label">Entorno</span>
-          <select
-            aria-labelledby="env-label"
-            value={store.env ?? ""}
-            onchange={(e) => {
-              const v = e.currentTarget.value;
-              if (v === "__edit") {
-                e.currentTarget.value = store.env ?? "";
-                store.modal = "environments";
-              } else store.env = v || null;
-            }}
-          >
-            <option value="">— ninguno —</option>
-            {#each Object.keys(store.collection.environments) as env}<option value={env}>{env}</option>{/each}
-            <option disabled>──────</option>
-            <option value="__edit">Editar entornos…</option>
-          </select>
-          <button class="btn icon" title="Nuevo entorno" aria-label="Nuevo entorno" onclick={() => store.quickNewEnvironment()}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-          </button>
-          <button class="btn icon" title="Editar entornos (⌘E)" aria-label="Editar entornos" onclick={() => (store.modal = "environments")}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
-          </button>
-        </label>
+        <EnvironmentSelect />
       {/if}
     </div>
-    <div class="split">
-      <div class="col" style="width: {requestW * 100}%">
-        <RequestPane />
-      </div>
-      <Splitter onresize={resizeRequest} />
-      <div class="col" style="flex: 1">
-        <ResponsePane />
-      </div>
-    </div>
+    <main class="workspace">
+      <RequestPane />
+    </main>
     <footer class="statusbar {store.status.kind}">
       <span class="dot"></span>
       <span class="text">{store.status.text}</span>
@@ -87,8 +69,16 @@
 </div>
 
 <Dialog />
-{#if store.modal === "environments" && store.collection}
+{#if store.modal === "variables" && store.collection}
+  <VariableInspector />
+{:else if store.modal === "curl" && store.collection}
+  <CurlImport />
+{:else if store.modal === "themes"}
+  <ThemePicker />
+{:else if store.modal === "environments" && store.collection}
   <EnvEditor />
+{:else if store.modal === "folder" && store.collection}
+  <FolderSettings />
 {:else if store.modal === "settings" && store.collection}
   <CollectionSettings />
 {/if}
@@ -112,6 +102,7 @@
   }
   .titlebar {
     height: var(--titlebar);
+    flex: 0 0 var(--titlebar);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -121,6 +112,9 @@
     font-size: 12.5px;
   }
   .crumb {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
     display: flex;
     gap: 6px;
     align-items: center;
@@ -128,27 +122,10 @@
   .sep {
     color: var(--text-faint);
   }
-  .env {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    font-size: 12px;
-    -webkit-app-region: no-drag;
-  }
-  .env > span {
-    margin-right: 4px;
-  }
-  .env select {
-    padding: 3px 8px;
-    font-size: 12px;
-  }
-  .split {
-    flex: 1;
-    display: flex;
-    min-height: 0;
-  }
+  .workspace { flex: 1; min-height: 0; min-width: 0; }
   .statusbar {
     height: 26px;
+    flex: 0 0 26px;
     display: flex;
     align-items: center;
     gap: 8px;

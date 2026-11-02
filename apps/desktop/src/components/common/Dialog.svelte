@@ -1,6 +1,6 @@
 <script lang="ts">
   // Diálogo modal: prompt (con campo) o confirm.
-  import { store } from "./store.svelte";
+  import { store } from "../../state/store.svelte";
 
   const d = $derived(store.dialog);
   let value = $state("");
@@ -23,10 +23,11 @@
     if (!d || busy) return;
     busy = true;
     error = null;
+    const current = d;
     try {
-      if (d.kind === "prompt") await d.onOk(value);
-      else await d.onOk();
-      store.dialog = null;
+      if (current.kind === "prompt") await current.onOk(value);
+      else await current.onOk();
+      if (store.dialog === current) store.dialog = null;
     } catch (e) {
       error = String(e);
     } finally {
@@ -41,7 +42,7 @@
   function onKey(e: KeyboardEvent) {
     if (!d) return;
     if (e.key === "Escape") cancel();
-    if (e.key === "Enter" && !(e.target instanceof HTMLTextAreaElement)) ok();
+    if (e.key === "Enter" && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); void ok(); }
   }
 </script>
 

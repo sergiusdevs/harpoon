@@ -49,7 +49,7 @@ fn to_script_request(req: &Request) -> ScriptRequest {
         headers: req.headers.clone(),
         query: req.query.clone(),
         body: match &req.body {
-            Body::None | Body::Form { .. } => None,
+            Body::None | Body::Form { .. } | Body::Multipart { .. } => None,
             Body::Json { json } => Some(json.clone()),
             Body::Text { text } => Some(text.clone()),
         },
@@ -62,7 +62,7 @@ fn apply_script_request(req: &mut Request, s: ScriptRequest) {
     req.headers = s.headers;
     req.query = s.query;
     match (&req.body, s.body) {
-        (Body::Form { .. }, _) => {}
+        (Body::Form { .. } | Body::Multipart { .. }, _) => {}
         (Body::Json { .. }, Some(b)) => req.body = Body::Json { json: b },
         (Body::Text { .. }, Some(b)) => req.body = Body::Text { text: b },
         (Body::None, Some(b)) => {
@@ -76,6 +76,34 @@ fn apply_script_request(req: &mut Request, s: ScriptRequest) {
     }
 }
 
+/// Prepara una solicitud para exportarla, ejecutando scripts previos sin persistir variables ni enviar tráfico.
+pub fn prepare_for_export(
+    collection: &Collection,
+    request: &Request,
+    environment: Option<&str>,
+    key: &str,
+) -> Result<Prepared> {
+    let base_scope = collection.scope_for_request(environment, key)?;
+    let env = base_scope.flatten();
+    let mut vars = collection.load_runtime_vars();
+    let mut req = request.clone();
+    let engine = Engine::new()?;
+    let mut script_req = to_script_request(&req);
+    for (phase, script) in [
+        ("pre (colección)", &collection.meta.scripts.pre),
+        ("pre", &request.scripts.pre),
+    ] {
+        let out = engine.run(phase, script, Some(&script_req), None, &vars, &env)?;
+        if let Some(r) = out.req {
+            script_req = r;
+        }
+        vars = out.vars;
+    }
+    apply_script_request(&mut req, script_req);
+    let scope = base_scope.with_layer(vars);
+    Ok(harpoon_http::prepare(collection, &req, &scope)?)
+}
+
 /// Ejecuta una solicitud con todos sus scripts. `vars` son las variables de
 /// ejecución de entrada; las de salida vienen en [`Execution::vars`].
 pub async fn execute(
@@ -85,7 +113,19 @@ pub async fn execute(
     environment: Option<&str>,
     vars: IndexMap<String, String>,
 ) -> Result<Execution> {
-    let base_scope = collection.scope(environment)?;
+    execute_for_key(client, collection, request, environment, vars, "").await
+}
+
+/// Ejecuta una solicitud aplicando las variables de sus carpetas.
+pub async fn execute_for_key(
+    client: &Client,
+    collection: &Collection,
+    request: &Request,
+    environment: Option<&str>,
+    vars: IndexMap<String, String>,
+    key: &str,
+) -> Result<Execution> {
+    let base_scope = collection.scope_for_request(environment, key)?;
     let env = base_scope.flatten();
     let mut vars = vars;
     let mut logs = Vec::new();
@@ -183,6 +223,20 @@ pub async fn execute_persistent(
 ) -> Result<Execution> {
     let vars = collection.load_runtime_vars();
     let exec = execute(client, collection, request, environment, vars).await?;
+    collection.save_runtime_vars(&exec.vars)?;
+    Ok(exec)
+}
+
+/// Variante persistente que aplica las variables de las carpetas de la solicitud.
+pub async fn execute_persistent_for_key(
+    client: &Client,
+    collection: &Collection,
+    request: &Request,
+    environment: Option<&str>,
+    key: &str,
+) -> Result<Execution> {
+    let vars = collection.load_runtime_vars();
+    let exec = execute_for_key(client, collection, request, environment, vars, key).await?;
     collection.save_runtime_vars(&exec.vars)?;
     Ok(exec)
 }

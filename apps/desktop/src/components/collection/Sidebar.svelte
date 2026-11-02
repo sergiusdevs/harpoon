@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { store, basename } from "./store.svelte";
-  import ContextMenu, { type Item } from "./ContextMenu.svelte";
-  import Icon from "./Icon.svelte";
-  import MethodBadge from "./MethodBadge.svelte";
+  import { store, basename } from "../../state/store.svelte";
+  import ContextMenu, { type Item } from "../common/ContextMenu.svelte";
+  import Icon from "../common/Icon.svelte";
+  import MethodBadge from "../common/MethodBadge.svelte";
 
   let filter = $state("");
   let filterInput = $state<HTMLInputElement | null>(null);
@@ -112,12 +112,14 @@
     { label: "Borrar…", action: () => store.deleteRequest(key), danger: true, sep: true },
   ];
   const folderMenu = (path: string): Item[] => [
+    { label: "Variables de la carpeta…", action: () => { store.editingFolder = path; store.modal = "folder"; } },
     { label: "Nueva solicitud…", action: () => store.newRequest(path) },
     { label: "Nueva subcarpeta…", action: () => store.newFolder(path) },
     { label: "Renombrar / mover…", action: () => store.renameFolder(path), sep: true },
     { label: "Borrar carpeta…", action: () => store.deleteFolder(path), danger: true },
   ];
   const rootMenu = (): Item[] => [
+    { label: "Importar desde cURL…", action: () => store.importCurl() },
     { label: "Nueva solicitud…", action: () => store.newRequest("") },
     { label: "Nueva carpeta…", action: () => store.newFolder("") },
   ];
@@ -160,12 +162,13 @@
   }
 
   function onGlobalKey(e: KeyboardEvent) {
-    if (!(e.metaKey || e.ctrlKey) || !store.collection) return;
+    if (!(e.metaKey || e.ctrlKey)) return;
+    if (e.key === ",") { e.preventDefault(); store.modal = "themes"; return; }
+    if (!store.collection) return;
     if (e.key === "k") { e.preventDefault(); filterInput?.focus(); filterInput?.select(); }
     else if (e.key === "n" && !e.shiftKey) { e.preventDefault(); store.newRequest(""); }
     else if (e.key === "n" && e.shiftKey) { e.preventDefault(); store.newFolder(""); }
     else if (e.key === "e") { e.preventDefault(); store.modal = "environments"; }
-    else if (e.key === ",") { e.preventDefault(); store.modal = "settings"; }
   }
 </script>
 
@@ -222,7 +225,7 @@
         ondrop={(e) => drop(e, n.path)}
       >
         <span class="chev" class:closed={collapsed[n.path]} aria-hidden="true">▾</span>
-        <span class="ficon"><Icon name={collapsed[n.path] ? "folder" : "folder-open"} size={14} /></span>
+        <span class="ficon"><Icon name={collapsed[n.path] ? "folder" : "folder-open"} size={17} /></span>
         <span class="fname">{n.name}</span>
         <span class="n muted">{countRequests(n)}</span>
       </div>
@@ -249,12 +252,9 @@
       <button class="btn icon" title="Abrir colección" aria-label="Abrir colección" onclick={() => store.pickAndOpen()}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
       </button>
-      <button class="btn icon" title="Cambiar tema" aria-label="Cambiar tema" onclick={() => store.toggleTheme()}>
-        {#if store.theme === "dark"}
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
-        {:else}
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>
-        {/if}
+      {#if store.collection}<button class="btn icon" title="Importar desde cURL" aria-label="Importar desde cURL" onclick={() => store.importCurl()}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg></button>{/if}
+      <button class="btn icon" title="Configuración (⌘,)" aria-label="Configuración" onclick={() => (store.modal = "themes")}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.3 3a7 7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 3h4l.3-3a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1z"/></svg>
       </button>
     </div>
   </div>
@@ -276,7 +276,7 @@
     <div class="collection">
       <div class="col-row">
         <div class="col-name" title={store.collection.root}>{store.collection.meta.name}</div>
-        <button class="btn icon" title="Ajustes de la colección (⌘,)" aria-label="Ajustes de la colección" onclick={() => (store.modal = "settings")}>
+        <button class="btn icon" title="Ajustes de la colección" aria-label="Ajustes de la colección" onclick={() => (store.modal = "settings")}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
         </button>
       </div>
@@ -305,7 +305,7 @@
     >
       {@render nodes(tree.children, 0)}
       {#if tree.children.length === 0}
-        <p class="muted small pad">Sin solicitudes. Pulsa + o clic derecho para crear una.</p>
+        <p class="muted small pad">{filter.trim() ? "No hay resultados para este filtro." : "Aún no hay solicitudes. Pulsa + para crear una."}</p>
       {/if}
       {#if dragging}
         <div class="root-drop muted">Suelta aquí para mover a la raíz</div>
@@ -363,7 +363,7 @@
     -webkit-app-region: no-drag;
   }
   .collection {
-    padding: 8px 8px 0 12px;
+    padding: 16px 10px 4px 14px;
   }
   .col-row {
     display: flex;
@@ -381,19 +381,19 @@
     display: flex;
     gap: 2px;
     align-items: center;
-    padding: 6px 8px 6px 10px;
+    padding: 8px 10px 12px;
     border-bottom: 1px solid var(--border);
   }
   .toolbar input {
     flex: 1;
     min-width: 0;
     font-size: 12px;
-    padding: 5px 8px;
+    padding: 7px 8px;
   }
   .tree {
     flex: 1;
     overflow: auto;
-    padding: 4px 6px 12px;
+    padding: 10px 8px 12px;
     outline: none;
   }
   .folder,
@@ -403,7 +403,7 @@
     gap: 8px;
     width: 100%;
     text-align: left;
-    padding: 5px 8px;
+    padding: 7px 8px;
     border-radius: var(--radius);
     color: var(--text);
     transition: background var(--t);
@@ -446,13 +446,13 @@
     transform: rotate(-90deg);
   }
   .badge-slot {
-    width: 58px;
+    width: 50px;
     flex: 0 0 auto;
     display: inline-flex;
   }
   .ficon {
     display: inline-flex;
-    color: var(--warn);
+    color: var(--text-muted);
     opacity: 0.85;
   }
   .name {
@@ -492,7 +492,7 @@
   }
   .small {
     font-size: 11.5px;
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
   .pad {
     padding: 8px;

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use harpoon_core::{
     Auth, Body, Collection, Method, Request, Scope,
-    model::{ApiKeyLocation, Expect, Settings},
+    model::{ApiKeyLocation, Expect, MultipartPart, Settings},
 };
 use indexmap::IndexMap;
 use serde::Serialize;
@@ -33,6 +33,14 @@ pub enum Error {
     },
     #[error("cabecera inválida `{0}`")]
     Header(String),
+    #[error("no se pudo leer el archivo {path}: {source}")]
+    UploadFile {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("formulario multipart inválido: {0}")]
+    Multipart(String),
     #[error("fallo de red: {}", describe(.0))]
     Network(reqwest::Error),
     #[error("tiempo agotado tras {0:?}")]
@@ -55,6 +63,9 @@ pub struct Prepared {
     pub query: IndexMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+    /// Partes multipart resueltas; los archivos se leen al enviar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multipart: Option<Vec<MultipartPart>>,
     /// Auth que se resuelve al enviar (`OAuth2`, Digest).
     #[serde(skip)]
     pub pending_auth: Option<auth::Pending>,
@@ -217,6 +228,7 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
         }
     }
 
+    let mut multipart = None;
     let body = match &request.body {
         Body::None => None,
         Body::Json { json } => {
@@ -226,6 +238,53 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
             Some(scope.interpolate(json)?)
         }
         Body::Text { text } => Some(scope.interpolate(text)?),
+        Body::Multipart { parts } => {
+            if headers
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case("content-type"))
+            {
+                return Err(Error::Multipart(
+                    "elimina Content-Type para generar el límite multipart automáticamente".into(),
+                ));
+            }
+            let mut resolved = Vec::with_capacity(parts.len());
+            for part in parts {
+                resolved.push(match part {
+                    MultipartPart::Text { name, value } => MultipartPart::Text {
+                        name: scope.interpolate(name)?,
+                        value: scope.interpolate(value)?,
+                    },
+                    MultipartPart::File {
+                        name,
+                        path,
+                        content_type,
+                    } => {
+                        let path = scope.interpolate(path)?;
+                        if path.trim().is_empty() {
+                            return Err(Error::Multipart("la ruta del archivo está vacía".into()));
+                        }
+                        let path = collection.root.join(path).to_string_lossy().into_owned();
+                        MultipartPart::File {
+                            name: scope.interpolate(name)?,
+                            path,
+                            content_type: content_type
+                                .as_deref()
+                                .map(|value| scope.interpolate(value))
+                                .transpose()?,
+                        }
+                    }
+                });
+            }
+            if resolved.iter().any(|part| match part {
+                MultipartPart::Text { name, .. } | MultipartPart::File { name, .. } => {
+                    name.trim().is_empty()
+                }
+            }) {
+                return Err(Error::Multipart("el nombre de un campo está vacío".into()));
+            }
+            multipart = Some(resolved);
+            None
+        }
         Body::Form { fields } => {
             headers
                 .entry("Content-Type".into())
@@ -250,6 +309,7 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
         headers,
         query,
         body,
+        multipart,
         pending_auth,
     })
 }
@@ -389,6 +449,42 @@ impl Client {
         }
         if let Some(body) = &prepared.body {
             req = req.body(body.clone());
+        }
+        if let Some(parts) = &prepared.multipart {
+            let mut form = reqwest::multipart::Form::new();
+            for part in parts {
+                match part {
+                    MultipartPart::Text { name, value } => {
+                        form = form.text(name.clone(), value.clone());
+                    }
+                    MultipartPart::File {
+                        name,
+                        path,
+                        content_type,
+                    } => {
+                        let file_path = std::path::Path::new(path);
+                        if file_path.file_name().is_none() {
+                            return Err(Error::Multipart(format!(
+                                "ruta de archivo inválida: {path}"
+                            )));
+                        }
+                        let mut field =
+                            reqwest::multipart::Part::file(file_path)
+                                .await
+                                .map_err(|source| Error::UploadFile {
+                                    path: file_path.to_path_buf(),
+                                    source,
+                                })?;
+                        if let Some(mime) = content_type.as_deref().filter(|s| !s.is_empty()) {
+                            field = field
+                                .mime_str(mime)
+                                .map_err(|e| Error::Multipart(e.to_string()))?;
+                        }
+                        form = form.part(name.clone(), field);
+                    }
+                }
+            }
+            req = req.multipart(form);
         }
 
         let start = Instant::now();

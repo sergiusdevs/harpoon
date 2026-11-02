@@ -1,7 +1,9 @@
 // Estado global de la app con runes de Svelte 5.
 
-import { api, folderChain } from "./api";
-import { emptyRequest, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type Request } from "./types";
+import { api, folderChain } from "../services/api";
+import { themes, type Theme } from "../domain/themes";
+import { interfaceFonts, editorFonts, type InterfaceFont, type EditorFont } from "../domain/fonts";
+import { emptyRequest, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type Request } from "../domain/types";
 
 export type Status = { kind: "idle" | "ok" | "err" | "busy"; text: string };
 
@@ -22,14 +24,36 @@ class Store {
   error = $state<string | null>(null);
   sending = $state(false);
   status = $state<Status>({ kind: "idle", text: "Abre una colección" });
-  theme = $state<"dark" | "light">("dark");
+  theme = $state<Theme>("dark");
+  interfaceFont = $state<InterfaceFont>("system");
+  editorFont = $state<EditorFont>("default");
+  editorFontSize = $state(12.5);
   /** Carpeta elegida que aún no tiene colección: se ofrece crearla. */
   pendingInit = $state<string | null>(null);
   dialog = $state<Dialog | null>(null);
   history = $state<HistoryEntry[]>([]);
+  runtimeVariables = $state<Record<string, string>>({});
   /** Entrada del historial que se está viendo (null = respuesta en vivo). */
   viewingHistory = $state<HistoryEntry | null>(null);
-  modal = $state<"environments" | "settings" | null>(null);
+  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | null>(null);
+  editingFolder = $state("");
+
+  /** Pide confirmación antes de perder el borrador; devuelve false si queda pendiente. */
+  confirmDiscard(action: () => void | Promise<void>): boolean {
+    if (!this.dirty) return true;
+    this.dialog = {
+      kind: "confirm", title: "Cambios sin guardar",
+      text: "La solicitud tiene cambios sin guardar. ¿Quieres descartarlos?",
+      ok: "Descartar", danger: true,
+      onOk: async () => {
+        const saved = this.selected && this.collection?.requests[this.selected];
+        if (saved) this.draft = structuredClone($state.snapshot(saved));
+        this.dirty = false;
+        await action();
+      },
+    };
+    return false;
+  }
 
   // ---------- colección ----------
 
@@ -63,6 +87,7 @@ class Store {
   }
 
   async pickAndOpen() {
+    if (!this.confirmDiscard(() => this.pickAndOpen())) return;
     const path = await (await api).pickFolder();
     if (path) await this.open(path);
   }
@@ -70,6 +95,8 @@ class Store {
   /** Sustituye la colección en memoria conservando la selección si sigue existiendo. */
   private async adopt(col: Collection, opts: { selectFirst?: boolean; select?: string } = {}) {
     this.collection = col;
+    this.runtimeVariables = {};
+    try { this.runtimeVariables = await (await api).runtimeVars(col.root); } catch { /* la colección sigue disponible */ }
     if (this.env && !(this.env in col.environments)) this.env = null;
     if (!this.env) this.env = col.meta.default_environment;
     this.folders = await (await api).listFolders(col.root);
@@ -109,6 +136,8 @@ class Store {
 
   select(key: string, opts: { keepDraft?: boolean } = {}) {
     if (!this.collection) return;
+    if (key === this.selected && this.dirty) return;
+    if (key !== this.selected && !this.confirmDiscard(() => this.select(key, opts))) return;
     const req = this.collection.requests[key];
     if (!req) return;
     if (opts.keepDraft && this.selected === key && this.draft) return;
@@ -169,6 +198,7 @@ class Store {
       const req = structuredClone($state.snapshot(this.draft));
       const x = await (await api).sendRequest(this.collection.root, this.env, req, this.selected ?? "");
       this.exchange = x;
+      this.runtimeVariables = x.vars;
       this.viewingHistory = null;
       void this.loadHistory();
       this.status = {
@@ -186,7 +216,24 @@ class Store {
 
   // ---------- crear / renombrar / borrar ----------
 
+  importCurl() {
+    if (!this.confirmDiscard(() => this.importCurl())) return;
+    this.modal = "curl";
+  }
+
+  async createImportedRequest(name: string, request: Request) {
+    if (!this.collection) throw new Error("Abre una colección primero");
+    const key = slug(name);
+    if (!key) throw new Error("Introduce un nombre para la solicitud");
+    if (this.collection.requests[key]) throw new Error(`Ya existe ${key}`);
+    await (await api).saveRequest(this.collection.root, key, { ...request, name: name.trim() });
+    const col = await (await api).openCollection(this.collection.root);
+    await this.adopt(col, { select: key });
+    this.status = { kind: "ok", text: `Importada requests/${key}.toml` };
+  }
+
   newRequest(folder = "") {
+    if (!this.confirmDiscard(() => this.newRequest(folder))) return;
     this.dialog = {
       kind: "prompt",
       title: folder ? `Nueva solicitud en ${folder}/` : "Nueva solicitud",
@@ -208,6 +255,7 @@ class Store {
   }
 
   duplicate(key: string) {
+    if (!this.confirmDiscard(() => this.duplicate(key))) return;
     const src = this.collection?.requests[key];
     if (!src) return;
     this.dialog = {
@@ -229,6 +277,7 @@ class Store {
   }
 
   renameRequest(key: string) {
+    if (this.selected === key && !this.confirmDiscard(() => this.renameRequest(key))) return;
     this.dialog = {
       kind: "prompt",
       title: "Renombrar solicitud",
@@ -277,6 +326,7 @@ class Store {
   }
 
   renameFolder(folder: string) {
+    if (this.selected?.startsWith(folder + "/") && !this.confirmDiscard(() => this.renameFolder(folder))) return;
     this.dialog = {
       kind: "prompt",
       title: "Renombrar carpeta",
@@ -315,6 +365,7 @@ class Store {
     const name = path.split("/").pop()!;
     const target = targetFolder ? `${targetFolder}/${name}` : name;
     if (target === path) return;
+    if ((this.selected === path || (kind === "folder" && this.selected?.startsWith(path + "/"))) && !this.confirmDiscard(() => this.moveInto(kind, path, targetFolder))) return;
     if (kind === "folder" && (targetFolder === path || targetFolder.startsWith(path + "/"))) {
       this.status = { kind: "err", text: "No se puede mover una carpeta dentro de sí misma" };
       return;
@@ -373,6 +424,12 @@ class Store {
     });
   }
 
+  async saveFolderVars(folder: string, vars: Record<string, string>) {
+    const col = await (await api).saveFolderVars(this.collection!.root, folder, vars);
+    await this.adopt(col);
+    this.status = { kind: "ok", text: `Guardado ${folder}/folder.toml` };
+  }
+
   async saveMeta(meta: CollectionMeta) {
     await this.run(async () => {
       const col = await (await api).saveMeta(this.collection!.root, meta);
@@ -383,8 +440,8 @@ class Store {
 
   // ---------- varios ----------
 
-  toggleTheme() {
-    this.theme = this.theme === "dark" ? "light" : "dark";
+  setTheme(theme: Theme) {
+    this.theme = theme;
     document.documentElement.dataset.theme = this.theme;
     try {
       localStorage.setItem("harpoon.theme", this.theme);
@@ -393,13 +450,39 @@ class Store {
     }
   }
 
+  setInterfaceFont(font: InterfaceFont) {
+    this.interfaceFont = font;
+    document.documentElement.dataset.interfaceFont = font;
+    try { localStorage.setItem("harpoon.interfaceFont", font); } catch { /* sin almacenamiento */ }
+  }
+
+  setEditorFont(font: EditorFont) {
+    this.editorFont = font;
+    document.documentElement.dataset.editorFont = font;
+    try { localStorage.setItem("harpoon.editorFont", font); } catch { /* sin almacenamiento */ }
+  }
+
+  setEditorFontSize(size: number) {
+    if (!Number.isFinite(size)) return;
+    this.editorFontSize = Math.min(20, Math.max(10, size));
+    document.documentElement.style.setProperty("--editor-font-size", `${this.editorFontSize}px`);
+    try { localStorage.setItem("harpoon.editorFontSize", String(this.editorFontSize)); } catch { /* sin almacenamiento */ }
+  }
+
   restore() {
     try {
       const t = localStorage.getItem("harpoon.theme");
-      if (t === "light" || t === "dark") {
-        this.theme = t;
-        document.documentElement.dataset.theme = t;
+      const theme = themes.find((item) => item.id === t);
+      if (theme) {
+        this.theme = theme.id;
+        document.documentElement.dataset.theme = theme.id;
       }
+      const interfaceFont = interfaceFonts.find((font) => font.id === localStorage.getItem("harpoon.interfaceFont"));
+      const editorFont = editorFonts.find((font) => font.id === localStorage.getItem("harpoon.editorFont"));
+      const size = localStorage.getItem("harpoon.editorFontSize");
+      if (interfaceFont) this.setInterfaceFont(interfaceFont.id);
+      if (editorFont) this.setEditorFont(editorFont.id);
+      if (size !== null && size.trim() !== "") this.setEditorFontSize(Number(size));
       const last = localStorage.getItem("harpoon.lastCollection");
       if (last) void this.open(last);
     } catch {

@@ -23,7 +23,7 @@ Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
 | Área | Estado |
 |---|---|
 | Colecciones en TOML, carpetas anidadas, entornos, secretos fuera de Git | ✅ |
-| REST: todos los métodos, cabeceras, query, JSON/texto/formulario | ✅ |
+| REST: todos los métodos, cabeceras, query, JSON/texto/formulario y multipart con archivos | ✅ |
 | Auth: Basic, Bearer, API key, Digest, OAuth2 (3 flujos, caché de tokens) | ✅ |
 | TLS: rustls, CA propia, certificado de cliente (mTLS), proxy, timeouts | ✅ |
 | Variables `{{var}}` por ámbitos + dinámicas (`$uuid`, `$timestamp`, `$randomInt`…) | ✅ |
@@ -114,13 +114,18 @@ Las variables de ejecución se guardan en `.harpoon/vars.toml` (fuera de Git).
 - Árbol de carpetas y solicitudes con **arrastrar y soltar**, menú contextual, filtro
   (`⌘K`) y navegación por teclado (flechas, `Enter`, `F2`, `⌘⌫`).
 - Pestañas Params / Headers / Body / Auth / Expect / Scripts / Tests / Docs.
+- Autocompletado de variables al escribir `{{` en la URL y en los valores de
+  parámetros, cabeceras y formularios, con el ámbito de origen y aviso de variables desconocidas.
+- Respuesta en modo formateado u original, descarga del cuerpo y comparación de dos entradas del historial.
+- Importación y exportación de comandos cURL, sin ejecutar el comando pegado, y aviso de cambios sin guardar.
 - Respuesta con JSON plegable y búsqueda (`⌘F`), cabeceras, cookies, tests (Expect +
   scripts), consola de `console.log`, vista previa HTML en iframe aislado, imágenes,
   lo que se envió realmente e historial de las últimas 50 respuestas.
 - Entornos con variables secretas (van a `*.secrets.toml`), ajustes de colección
   (auth global, variables, scripts, TLS, proxy).
 - Atajos: `⌘↩` enviar, `⌘S` guardar, `⌘N` nueva solicitud, `⇧⌘N` carpeta, `⌘E`
-  entornos, `⌘,` ajustes.
+  entornos, `⌘,` configuración de la app (temas y fuentes). Los ajustes de la
+  colección se abren desde el botón junto a su nombre.
 - Modo demo sin Rust: `npm run dev` abre la UI en el navegador con datos de ejemplo.
 
 ## Documentación
@@ -161,6 +166,11 @@ crates/
   harpoon-cli/     binario `harpoon`
 apps/
   desktop/         app de escritorio: src-tauri (Rust) + src (Svelte 5 + CodeMirror)
+    src/components/ componentes agrupados por función
+    src/domain/     modelos y funciones de dominio
+    src/services/   acceso a Tauri y modo demo
+    src/state/      estado de la aplicación
+    tests/          pruebas del frontend
 docs/              formato, scripting, auth, ADRs
 examples/petstore/ colección de ejemplo
 ```
@@ -171,7 +181,7 @@ examples/petstore/ colección de ejemplo
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
-cd apps/desktop && npm run check && npm run build
+cd apps/desktop && npm run check && npm test && npm run build
 ```
 
 El CI (GitHub Actions) ejecuta todo lo anterior en Linux, macOS y Windows.

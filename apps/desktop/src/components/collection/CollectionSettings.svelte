@@ -1,11 +1,11 @@
 <script lang="ts">
   // Ajustes de la colección (harpoon.toml): nombre, auth, variables, conexión.
-  import { store } from "./store.svelte";
-  import type { CollectionMeta } from "./types";
-  import Modal from "./Modal.svelte";
-  import AuthForm from "./AuthForm.svelte";
-  import KeyValue from "./KeyValue.svelte";
-  import CodeEditor from "./CodeEditor.svelte";
+  import { store } from "../../state/store.svelte";
+  import type { CollectionMeta } from "../../domain/types";
+  import Modal from "../common/Modal.svelte";
+  import AuthForm from "../request/AuthForm.svelte";
+  import KeyValue from "../common/KeyValue.svelte";
+  import CodeEditor from "../common/CodeEditor.svelte";
 
   let meta = $state<CollectionMeta>(structuredClone($state.snapshot(store.collection!.meta)));
   let tab = $state<"general" | "auth" | "vars" | "scripts" | "conn">("general");

@@ -38,6 +38,14 @@ struct RuntimeVarsFile {
     vars: IndexMap<String, String>,
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct FolderConfig {
+    #[serde(default)]
+    pub vars: IndexMap<String, String>,
+    #[serde(flatten)]
+    pub other: IndexMap<String, toml::Value>,
+}
+
 /// Una colección cargada en memoria.
 #[derive(Debug, Clone)]
 pub struct Collection {
@@ -46,6 +54,7 @@ pub struct Collection {
     /// Solicitudes indexadas por ruta relativa sin extensión (`users/list`).
     pub requests: IndexMap<String, Request>,
     pub environments: IndexMap<String, Environment>,
+    pub folder_configs: IndexMap<String, FolderConfig>,
 }
 
 impl Collection {
@@ -66,6 +75,7 @@ impl Collection {
         let meta: CollectionMeta = read_toml(&root.join(META_FILE))?;
 
         let mut requests = IndexMap::new();
+        let mut folder_configs = IndexMap::new();
         let req_dir = root.join(REQUESTS_DIR);
         if req_dir.is_dir() {
             for entry in WalkDir::new(&req_dir)
@@ -76,6 +86,27 @@ impl Collection {
                 .filter(|e| e.path().extension().is_some_and(|x| x == "toml"))
             {
                 let path = entry.path();
+                if path.file_name().is_some_and(|n| n == "folder.toml")
+                    && path.parent() != Some(req_dir.as_path())
+                {
+                    let document: toml::Value = read_toml(path)?;
+                    if document.get("method").is_some() && document.get("url").is_some() {
+                        let key = path
+                            .strip_prefix(&req_dir)
+                            .unwrap_or(path)
+                            .with_extension("")
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        requests.insert(key, read_toml(path)?);
+                        continue;
+                    }
+                    if let Some(folder) = path.parent().and_then(|p| p.strip_prefix(&req_dir).ok())
+                    {
+                        let folder = folder.to_string_lossy().replace('\\', "/");
+                        folder_configs.insert(folder, read_toml(path)?);
+                        continue;
+                    }
+                }
                 let key = path
                     .strip_prefix(&req_dir)
                     .unwrap_or(path)
@@ -122,6 +153,7 @@ impl Collection {
             meta,
             requests,
             environments,
+            folder_configs,
         })
     }
 
@@ -163,6 +195,10 @@ impl Collection {
 
     /// Guarda una solicitud en disco (`requests/<key>.toml`) y en memoria.
     pub fn save_request(&mut self, key: &str, request: Request) -> Result<()> {
+        let key = validate_key(key)?;
+        if key.ends_with("/folder") && !self.requests.contains_key(key) {
+            return Err(Error::InvalidName(key.to_owned()));
+        }
         let path = self.root.join(REQUESTS_DIR).join(format!("{key}.toml"));
         write_toml(&path, &request)?;
         self.requests.insert(key.to_owned(), request);
@@ -183,6 +219,9 @@ impl Collection {
     /// Mueve/renombra una solicitud (`users/list` → `users/list-all`).
     pub fn rename_request(&mut self, from: &str, to: &str) -> Result<()> {
         let (from, to) = (validate_key(from)?, validate_key(to)?);
+        if to.ends_with("/folder") {
+            return Err(Error::InvalidName(to.to_owned()));
+        }
         if from == to {
             return Ok(());
         }
@@ -230,6 +269,15 @@ impl Collection {
         self.requests.retain(|k, _| !k.starts_with(&prefix));
         self.requests.extend(moved);
         self.sort_requests();
+        let moved_configs: Vec<_> = self
+            .folder_configs
+            .iter()
+            .filter(|(k, _)| *k == from || k.starts_with(&prefix))
+            .map(|(k, v)| (format!("{to}{}", &k[from.len()..]), v.clone()))
+            .collect();
+        self.folder_configs
+            .retain(|k, _| k != from && !k.starts_with(&prefix));
+        self.folder_configs.extend(moved_configs);
         Ok(())
     }
 
@@ -244,6 +292,8 @@ impl Collection {
         prune_empty_dirs(&self.root.join(REQUESTS_DIR), path.parent());
         let prefix = format!("{folder}/");
         self.requests.retain(|k, _| !k.starts_with(&prefix));
+        self.folder_configs
+            .retain(|k, _| k != folder && !k.starts_with(&prefix));
         Ok(())
     }
 
@@ -329,6 +379,55 @@ impl Collection {
 
     fn sort_requests(&mut self) {
         self.requests.sort_keys();
+    }
+
+    /// Guarda variables de una carpeta sin eliminar otras secciones de su configuración.
+    pub fn save_folder_vars(&mut self, folder: &str, vars: IndexMap<String, String>) -> Result<()> {
+        let folder = validate_key(folder)?;
+        let dir = self.root.join(REQUESTS_DIR).join(folder);
+        if !dir.is_dir() {
+            return Err(Error::Io {
+                path: dir,
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "la carpeta no existe"),
+            });
+        }
+        let config_path = dir.join("folder.toml");
+        if config_path.exists() && !self.folder_configs.contains_key(folder) {
+            return Err(Error::AlreadyExists(config_path));
+        }
+        let mut config = self.folder_configs.get(folder).cloned().unwrap_or_default();
+        config.vars = vars;
+        write_toml(&dir.join("folder.toml"), &config)?;
+        self.folder_configs.insert(folder.to_owned(), config);
+        Ok(())
+    }
+
+    /// Construye el ámbito para una solicitud, con las carpetas entre colección y entorno.
+    pub fn scope_for_request(&self, environment: Option<&str>, key: &str) -> Result<Scope> {
+        let mut scope = Scope::new().with_layer(self.meta.vars.clone());
+        let mut folder = String::new();
+        let mut parts = key.split('/').peekable();
+        while let Some(part) = parts.next() {
+            if parts.peek().is_none() {
+                break;
+            }
+            if !folder.is_empty() {
+                folder.push('/');
+            }
+            folder.push_str(part);
+            if let Some(config) = self.folder_configs.get(&folder) {
+                scope = scope.with_layer(config.vars.clone());
+            }
+        }
+        let env_name = environment.or(self.meta.default_environment.as_deref());
+        if let Some(name) = env_name {
+            let env = self
+                .environments
+                .get(name)
+                .ok_or_else(|| Error::UnknownEnvironment(name.to_owned()))?;
+            scope = scope.with_layer(env.vars.clone());
+        }
+        Ok(scope)
     }
 
     /// Construye el ámbito de variables para un entorno (o el predeterminado).
@@ -429,137 +528,4 @@ fn write_file(path: &Path, contents: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn init_y_load_son_simetricos() {
-        let tmp = tempfile::tempdir().unwrap();
-        let col = Collection::init(tmp.path(), "demo").unwrap();
-        assert_eq!(col.meta.name, "demo");
-        assert_eq!(col.requests.len(), 1);
-        assert!(col.requests.contains_key("health"));
-        assert!(col.environments.contains_key("dev"));
-
-        let scope = col.scope(None).unwrap();
-        assert_eq!(
-            scope.interpolate(&col.requests["health"].url).unwrap(),
-            "http://localhost:8080/health"
-        );
-    }
-
-    #[test]
-    fn discover_sube_directorios_y_fusiona_secretos() {
-        let tmp = tempfile::tempdir().unwrap();
-        Collection::init(tmp.path(), "demo").unwrap();
-        fs::write(
-            tmp.path().join("environments/dev.secrets.toml"),
-            "[vars]\ntoken = \"s3cr3t\"\n",
-        )
-        .unwrap();
-        let nested = tmp.path().join("requests/users");
-        fs::create_dir_all(&nested).unwrap();
-
-        let col = Collection::discover(&nested).unwrap();
-        assert_eq!(col.root, tmp.path());
-        assert_eq!(col.environments["dev"].vars["token"], "s3cr3t");
-    }
-
-    #[test]
-    fn crear_renombrar_y_borrar_solicitudes_y_carpetas() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut col = Collection::init(tmp.path(), "demo").unwrap();
-
-        let req = Request::new("Listar", crate::Method::Get, "{{base_url}}/users");
-        col.save_request("users/list", req.clone()).unwrap();
-        assert!(tmp.path().join("requests/users/list.toml").is_file());
-
-        col.rename_request("users/list", "users/all").unwrap();
-        assert!(!tmp.path().join("requests/users/list.toml").exists());
-        assert!(col.requests.contains_key("users/all"));
-
-        col.rename_folder("users", "people").unwrap();
-        assert!(tmp.path().join("requests/people/all.toml").is_file());
-        assert!(!tmp.path().join("requests/users").exists());
-        assert!(col.requests.contains_key("people/all"));
-
-        col.delete_request("people/all").unwrap();
-        assert!(
-            !tmp.path().join("requests/people").exists(),
-            "carpeta vacía podada"
-        );
-        assert!(!col.requests.contains_key("people/all"));
-
-        col.create_folder("admin/audit").unwrap();
-        col.save_request("admin/audit/log", req).unwrap();
-        col.delete_folder("admin").unwrap();
-        assert!(!tmp.path().join("requests/admin").exists());
-        assert!(col.requests.is_empty() || !col.requests.keys().any(|k| k.starts_with("admin/")));
-
-        // Recargar desde disco coincide con memoria.
-        let reloaded = Collection::load(tmp.path()).unwrap();
-        assert_eq!(
-            reloaded.requests.keys().collect::<Vec<_>>(),
-            col.requests.keys().collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn nombres_peligrosos_se_rechazan() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut col = Collection::init(tmp.path(), "demo").unwrap();
-        assert!(matches!(
-            col.delete_request("../x"),
-            Err(Error::InvalidName(_))
-        ));
-        assert!(matches!(
-            col.create_folder("etc/../../x"),
-            Err(Error::InvalidName(_))
-        ));
-        assert!(matches!(
-            col.rename_request("health", "a//b"),
-            Err(Error::InvalidName(_))
-        ));
-        assert!(matches!(
-            col.save_environment("dev/x", Environment::default()),
-            Err(Error::InvalidName(_))
-        ));
-    }
-
-    #[test]
-    fn guardar_entorno_separa_secretos() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut col = Collection::init(tmp.path(), "demo").unwrap();
-        let mut env = Environment::default();
-        env.vars.insert("base_url".into(), "https://api".into());
-        env.vars.insert("token".into(), "s3cr3t".into());
-        env.secrets.push("token".into());
-        col.save_environment("prod", env).unwrap();
-
-        let public = fs::read_to_string(tmp.path().join("environments/prod.toml")).unwrap();
-        assert!(public.contains("base_url"));
-        assert!(
-            !public.contains("s3cr3t"),
-            "el secreto no va al archivo versionado"
-        );
-        let secret = fs::read_to_string(tmp.path().join("environments/prod.secrets.toml")).unwrap();
-        assert!(secret.contains("s3cr3t"));
-
-        let reloaded = Collection::load(tmp.path()).unwrap();
-        assert_eq!(reloaded.environments["prod"].vars["token"], "s3cr3t");
-
-        col.delete_environment("prod").unwrap();
-        assert!(!tmp.path().join("environments/prod.secrets.toml").exists());
-        assert!(!col.environments.contains_key("prod"));
-    }
-
-    #[test]
-    fn borrar_entorno_predeterminado_limpia_meta() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut col = Collection::init(tmp.path(), "demo").unwrap();
-        col.delete_environment("dev").unwrap();
-        assert_eq!(col.meta.default_environment, None);
-        let reloaded = Collection::load(tmp.path()).unwrap();
-        assert_eq!(reloaded.meta.default_environment, None);
-    }
-}
+mod tests;

@@ -1,13 +1,17 @@
 // Puente con el backend. Dentro de Tauri usa `invoke`; en un navegador
 // normal (desarrollo de la UI, capturas) usa un mock con la colección de ejemplo.
 
-import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, Outcome, Request } from "./types";
-import { emptyRequest, normalizeCollection } from "./types";
+import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, Outcome, Request } from "../domain/types";
+import type { CurlPrepared } from "../domain/curlExport";
+import { folderChain } from "../domain/paths";
+export { folderChain } from "../domain/paths";
+import { emptyRequest, normalizeCollection } from "../domain/types";
 
 export interface Api {
   openCollection(path: string): Promise<Collection>;
   initCollection(path: string, name: string): Promise<Collection>;
   pickFolder(): Promise<string | null>;
+  pickFile(): Promise<string | null>;
   saveRequest(root: string, key: string, request: Request): Promise<void>;
   deleteRequest(root: string, key: string): Promise<Collection>;
   renameRequest(root: string, from: string, to: string): Promise<Collection>;
@@ -15,12 +19,16 @@ export interface Api {
   renameFolder(root: string, from: string, to: string): Promise<Collection>;
   deleteFolder(root: string, folder: string): Promise<Collection>;
   listFolders(root: string): Promise<string[]>;
+  saveFolderVars(root: string, folder: string, vars: Record<string, string>): Promise<Collection>;
+  resolveUrl(root: string, key: string, env: string | null, url: string): Promise<string>;
   saveEnvironment(root: string, name: string, env: Environment): Promise<Collection>;
   deleteEnvironment(root: string, name: string): Promise<Collection>;
   saveMeta(root: string, meta: CollectionMeta): Promise<Collection>;
   sendRequest(root: string, env: string | null, request: Request, key: string): Promise<Exchange>;
   history(root: string, key: string): Promise<HistoryEntry[]>;
   clearHistory(root: string, key: string): Promise<void>;
+  prepareCurl(root: string, key: string, env: string | null, request: Request): Promise<CurlPrepared>;
+  saveResponse(filename: string, bytes: Uint8Array): Promise<void>;
   runtimeVars(root: string): Promise<Record<string, string>>;
   saveRuntimeVars(root: string, vars: Record<string, string>): Promise<void>;
 }
@@ -39,6 +47,10 @@ async function tauriApi(): Promise<Api> {
       const r = await open({ directory: true, multiple: false, title: "Abrir colección" });
       return typeof r === "string" ? r : null;
     },
+    pickFile: async () => {
+      const result = await open({ directory: false, multiple: false, title: "Seleccionar archivo" });
+      return typeof result === "string" ? result : null;
+    },
     saveRequest: (root, key, request) => invoke("save_request", { root, key, request }),
     deleteRequest: (root, key) => col("delete_request", { root, key }),
     renameRequest: (root, from, to) => col("rename_request", { root, from, to }),
@@ -46,11 +58,19 @@ async function tauriApi(): Promise<Api> {
     renameFolder: (root, from, to) => col("rename_folder", { root, from, to }),
     deleteFolder: (root, folder) => col("delete_folder", { root, folder }),
     listFolders: (root) => invoke<string[]>("list_folders", { root }),
+    saveFolderVars: (root, folder, vars) => col("save_folder_vars", { root, folder, vars }),
+    resolveUrl: (root, key, env, url) => invoke<string>("resolve_url", { root, key, env, url }),
     saveEnvironment: (root, name, env) => col("save_environment", { root, name, env }),
     deleteEnvironment: (root, name) => col("delete_environment", { root, name }),
     saveMeta: (root, meta) => col("save_meta", { root, meta }),
     sendRequest: (root, env, request, key) =>
       invoke<Exchange>("send_request", { args: { root, env, key, request } }),
+    prepareCurl: (root, key, env, request) => invoke<CurlPrepared>("prepare_curl", { root, key, env, request }),
+    saveResponse: async (filename, bytes) => {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({ defaultPath: filename, title: "Guardar respuesta" });
+      if (path) await invoke("save_response_file", { path, bytes: Array.from(bytes) });
+    },
     history: (root, key) => invoke<HistoryEntry[]>("history", { root, key }),
     clearHistory: (root, key) => invoke("clear_history", { root, key }),
     runtimeVars: (root) => invoke<Record<string, string>>("runtime_vars", { root }),
@@ -60,6 +80,7 @@ async function tauriApi(): Promise<Api> {
 
 function mockApi(): Api {
   const col: Collection = {
+    folder_configs: {},
     root: "/Users/sergius/workspace/projects/dev-api/examples/petstore",
     meta: {
       name: "Petstore",
@@ -112,8 +133,12 @@ function mockApi(): Api {
   let runtime: Record<string, string> = { token: "demo-token" };
   const hist: Record<string, HistoryEntry[]> = {};
   const snapshot = async () => structuredClone(col);
-  const vars: Record<string, string> = { base_url: "http://localhost:8080", api_version: "v2", pet_id: "42" };
-  const interp = (s: string) => s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
+  const resolveMockUrl = (key: string, env: string | null, url: string) => {
+    const values = { ...col.meta.vars };
+    for (const folder of folderChain(key)) Object.assign(values, col.folder_configs[folder]?.vars ?? {});
+    Object.assign(values, col.environments[env ?? col.meta.default_environment ?? ""]?.vars ?? {}, runtime);
+    return url.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (match, name: string) => values[name] ?? match);
+  };
   const sortRequests = () => {
     const entries = Object.entries(col.requests).sort(([a], [b]) => a.localeCompare(b));
     col.requests = Object.fromEntries(entries);
@@ -123,6 +148,7 @@ function mockApi(): Api {
     openCollection: snapshot,
     initCollection: async (path, name) => ({ ...structuredClone(col), root: path, meta: { ...col.meta, name } }),
     pickFolder: async () => col.root,
+    pickFile: async () => null,
     saveRequest: async (_root, key, request) => {
       col.requests[key] = structuredClone(request);
       for (const f of folderChain(key)) folders.add(f);
@@ -155,15 +181,27 @@ function mockApi(): Api {
           folders.delete(f);
           folders.add(to + f.slice(from.length));
         }
+      for (const f of Object.keys(col.folder_configs)) if (f === from || f.startsWith(from + "/")) {
+        col.folder_configs[to + f.slice(from.length)] = col.folder_configs[f];
+        delete col.folder_configs[f];
+      }
       sortRequests();
       return snapshot();
     },
     deleteFolder: async (_r, folder) => {
       for (const k of Object.keys(col.requests)) if (k.startsWith(folder + "/")) delete col.requests[k];
       for (const f of [...folders]) if (f === folder || f.startsWith(folder + "/")) folders.delete(f);
+      for (const f of Object.keys(col.folder_configs)) if (f === folder || f.startsWith(folder + "/")) delete col.folder_configs[f];
       return snapshot();
     },
     listFolders: async () => [...folders].sort(),
+    saveFolderVars: async (_root, folder, vars) => {
+      col.folder_configs[folder] = { vars: structuredClone(vars) };
+      return snapshot();
+    },
+    resolveUrl: async (_root, key, env, url) => {
+      return resolveMockUrl(key, env, url);
+    },
     saveEnvironment: async (_r, name, env) => {
       col.environments[name] = structuredClone(env);
       return snapshot();
@@ -178,7 +216,7 @@ function mockApi(): Api {
       return snapshot();
     },
     sendRequest: async (_root, env, request, key): Promise<Exchange> => {
-      const x = await mockSend(request);
+      const x = await mockSend(request, key, env);
       (hist[key] ??= []).unshift({
         at: new Date().toISOString().slice(0, 19) + "Z",
         env: env ?? undefined,
@@ -195,6 +233,47 @@ function mockApi(): Api {
       });
       return x;
     },
+    prepareCurl: async (_root, key, env, request) => {
+      if (col.meta.scripts.pre || request.scripts.pre) throw new Error("La exportación con scripts previos requiere la aplicación de escritorio");
+      const values = { ...col.meta.vars };
+      for (const folder of folderChain(key)) Object.assign(values, col.folder_configs[folder]?.vars ?? {});
+      Object.assign(values, col.environments[env ?? col.meta.default_environment ?? ""]?.vars ?? {}, runtime);
+      const resolve = (value: string) => value.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, name: string) => {
+        if (!(name in values)) throw new Error(`Variable sin definir: ${name}`);
+        return values[name];
+      });
+      const headers: Record<string, string> = {}, query: Record<string, string> = {};
+      for (const [name, value] of Object.entries(request.headers)) headers[resolve(name)] = resolve(value);
+      for (const [name, value] of Object.entries(request.query)) query[resolve(name)] = resolve(value);
+      const auth = request.auth.type === "inherit" ? col.meta.auth : request.auth;
+      let digest: CurlPrepared["digest"] = null;
+      if (auth.type === "oauth2") throw new Error("OAuth2 necesita obtener un token al enviar y no se puede exportar automáticamente a cURL.");
+      if (auth.type === "digest") digest = { username: resolve(auth.username), password: resolve(auth.password) };
+      if (auth.type === "bearer") headers.Authorization = `Bearer ${resolve(auth.token)}`;
+      if (auth.type === "basic") {
+        const bytes = new TextEncoder().encode(`${resolve(auth.username)}:${resolve(auth.password)}`);
+        headers.Authorization = `Basic ${btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""))}`;
+      }
+      if (auth.type === "api_key") (auth.in === "query" ? query : headers)[resolve(auth.key)] = resolve(auth.value);
+      let body: string | undefined;
+      if (request.body.type === "json") { body = resolve(request.body.json); headers["Content-Type"] ??= "application/json"; }
+      else if (request.body.type === "text") body = resolve(request.body.text);
+      else if (request.body.type === "form") {
+        body = new URLSearchParams(Object.entries(request.body.fields).map(([k, v]) => [k, resolve(v)])).toString();
+        headers["Content-Type"] ??= "application/x-www-form-urlencoded";
+      }
+      const multipart = request.body.type === "multipart" ? request.body.parts.map((part) => part.type === "text"
+        ? { type: "text" as const, name: resolve(part.name), value: resolve(part.value) }
+        : { type: "file" as const, name: resolve(part.name), path: resolve(part.path), content_type: part.content_type ? resolve(part.content_type) : undefined }) : undefined;
+      if (multipart && Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) throw new Error("Elimina Content-Type para generar el límite multipart automáticamente");
+      return { request: { method: request.method, url: resolve(request.url), headers, query, body, multipart }, digest, settings: col.meta.settings };
+    },
+    saveResponse: async (filename, bytes) => {
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+      const link = document.createElement("a");
+      link.href = url; link.download = filename; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
     history: async (_r, key) => structuredClone(hist[key] ?? []),
     clearHistory: async (_r, key) => {
       delete hist[key];
@@ -205,10 +284,10 @@ function mockApi(): Api {
     },
   };
 
-  async function mockSend(request: Request): Promise<Exchange> {
+  async function mockSend(request: Request, key: string, env: string | null): Promise<Exchange> {
     {
       await new Promise((r) => setTimeout(r, 180 + Math.random() * 120));
-      const url = interp(request.url);
+      const url = resolveMockUrl(key, env, request.url);
       if (url.endsWith("/logo")) {
         const png = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAUklEQVR4nO3PsQ0AIAwDwcD+O8MGoEhBuC8tnZ3kAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4bgEWmwABNMI7oAAAAABJRU5ErkJggg==";
         return { sent: { method: request.method, url, headers: request.headers, query: request.query }, response: { status: 200, headers: { "content-type": "image/png", "content-length": "150", "set-cookie": "session=abc123; Path=/; HttpOnly\ntheme=dark; Path=/; Max-Age=3600" }, body: "", is_json: false, is_binary: true, body_base64: png, elapsed_ms: 7, size: 150 }, assertions: [], tests: [], logs: [], vars: { ...runtime }, passed: true };
@@ -266,14 +345,6 @@ function mockApi(): Api {
       };
     }
   }
-}
-
-/** `a/b/c` → `["a", "a/b"]` (las carpetas que contienen la clave). */
-export function folderChain(key: string): string[] {
-  const parts = key.split("/");
-  const out: string[] = [];
-  for (let i = 1; i < parts.length; i++) out.push(parts.slice(0, i).join("/"));
-  return out;
 }
 
 export const api: Promise<Api> = inTauri ? tauriApi() : Promise.resolve(mockApi());

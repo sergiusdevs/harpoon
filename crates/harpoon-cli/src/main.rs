@@ -106,10 +106,7 @@ async fn run() -> anyhow::Result<ExitCode> {
         }
         Command::List => {
             let col = open(cli.collection.as_deref())?;
-            let scope = col
-                .scope(cli.env.as_deref())?
-                .with_layer(col.load_runtime_vars());
-            output::list(&col, &scope);
+            output::list(&col, cli.env.as_deref())?;
             Ok(ExitCode::SUCCESS)
         }
         Command::Send {
@@ -123,9 +120,14 @@ async fn run() -> anyhow::Result<ExitCode> {
                 .get(&request)
                 .with_context(|| format!("no existe la solicitud `{request}`"))?;
             let client = Client::for_collection(&col)?;
-            let exec =
-                harpoon_script::runner::execute_persistent(&client, &col, req, cli.env.as_deref())
-                    .await?;
+            let exec = harpoon_script::runner::execute_persistent_for_key(
+                &client,
+                &col,
+                req,
+                cli.env.as_deref(),
+                &request,
+            )
+            .await?;
             if json {
                 output::send_json(&request, &exec)?;
             } else {
@@ -182,12 +184,13 @@ async fn run() -> anyhow::Result<ExitCode> {
                         run_vars.insert(k.clone(), v.clone());
                     }
                     for (key, req) in &selected {
-                        let item = match harpoon_script::execute(
+                        let item = match harpoon_script::runner::execute_for_key(
                             &client,
                             &col,
                             req,
                             cli.env.as_deref(),
                             run_vars.clone(),
+                            key,
                         )
                         .await
                         {

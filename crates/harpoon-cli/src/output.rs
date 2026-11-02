@@ -1,11 +1,11 @@
 //! Formateo de salida: legible para humanos y JSON para máquinas.
 
-use harpoon_core::{Collection, Scope};
+use harpoon_core::Collection;
 use harpoon_http::{Outcome, Prepared, Response};
 use harpoon_script::{Execution, TestResult};
 use serde::Serialize;
 
-pub fn list(col: &Collection, scope: &Scope) {
+pub fn list(col: &Collection, env: Option<&str>) -> harpoon_core::Result<()> {
     println!("{} ({})", col.meta.name, col.root.display());
     println!(
         "\nEntornos: {}",
@@ -17,11 +17,15 @@ pub fn list(col: &Collection, scope: &Scope) {
     );
     println!("\nSolicitudes:");
     for (key, req) in &col.requests {
+        let scope = col
+            .scope_for_request(env, key)?
+            .with_layer(col.load_runtime_vars());
         let url = scope
             .interpolate(&req.url)
             .unwrap_or_else(|_| req.url.clone());
         println!("  {key:<24} {:<7} {url}", req.method.to_string());
     }
+    Ok(())
 }
 
 pub fn send_human(x: &Execution, verbose: bool) {
@@ -38,6 +42,18 @@ pub fn send_human(x: &Execution, verbose: bool) {
         }
         if let Some(body) = &prepared.body {
             println!(">\n{body}");
+        }
+        if let Some(parts) = &prepared.multipart {
+            for part in parts {
+                match part {
+                    harpoon_core::model::MultipartPart::Text { name, value } => {
+                        println!("> multipart {name}={value}");
+                    }
+                    harpoon_core::model::MultipartPart::File { name, path, .. } => {
+                        println!("> multipart {name}=@{path}");
+                    }
+                }
+            }
         }
         println!();
     }

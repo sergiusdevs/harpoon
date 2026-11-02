@@ -43,6 +43,8 @@ muestra igual y el fallo aparece como un test llamado `script post` (o `script t
 | `query`   | objeto clave → valor     |
 | `body`    | string o `undefined`     |
 
+Los cuerpos `form` y `multipart` no se exponen ni se modifican mediante `harpoon.req.body`.
+
 ### `harpoon.res` (solo `post` y `test`)
 
 | Campo / método    | Descripción                               |

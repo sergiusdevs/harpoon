@@ -139,6 +139,26 @@ pub enum Body {
     Form {
         fields: IndexMap<String, String>,
     },
+    Multipart {
+        #[serde(default)]
+        parts: Vec<MultipartPart>,
+    },
+}
+
+/// Campo de formulario multipart, con valor literal o ruta a un archivo.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum MultipartPart {
+    Text {
+        name: String,
+        value: String,
+    },
+    File {
+        name: String,
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        content_type: Option<String>,
+    },
 }
 
 /// Scripts asociados a una solicitud (fase 3).

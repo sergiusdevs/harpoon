@@ -1,8 +1,8 @@
 <script lang="ts">
   // Editor de entornos: lista a la izquierda, variables a la derecha.
-  import { store, slug } from "./store.svelte";
-  import type { Environment } from "./types";
-  import Modal from "./Modal.svelte";
+  import { store, slug } from "../../state/store.svelte";
+  import type { Environment } from "../../domain/types";
+  import Modal from "../common/Modal.svelte";
 
   const names = $derived(Object.keys(store.collection?.environments ?? {}));
   let current = $state<string | null>(null);

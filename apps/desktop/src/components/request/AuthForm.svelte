@@ -1,7 +1,7 @@
 <script lang="ts">
   // Formulario de autenticación, compartido por solicitud y colección.
-  import { emptyOAuth2, type Auth } from "./types";
-  import KeyValue from "./KeyValue.svelte";
+  import { emptyOAuth2, type Auth } from "../../domain/types";
+  import KeyValue from "../common/KeyValue.svelte";
 
   interface Props {
     auth: Auth;
