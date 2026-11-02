@@ -229,8 +229,21 @@ fn prepare_curl(
     request: Request,
 ) -> Result<CurlPrepared, String> {
     let col = load(&root)?;
-    let prepared = harpoon_script::runner::prepare_for_export(&col, &request, env.as_deref(), &key)
-        .map_err(|e| e.to_string())?;
+    let mut prepared =
+        harpoon_script::runner::prepare_for_export(&col, &request, env.as_deref(), &key)
+            .map_err(|e| e.to_string())?;
+    if !prepared
+        .headers
+        .keys()
+        .any(|key| key.eq_ignore_ascii_case("cookie"))
+    {
+        if let Some(value) = harpoon_http::cookies::PersistentCookies::for_root(&col.root)
+            .and_then(|jar| jar.header_for_url(&prepared.url))
+            .map_err(|e| e.to_string())?
+        {
+            prepared.headers.insert("Cookie".into(), value);
+        }
+    }
     let digest = match &prepared.pending_auth {
         Some(harpoon_http::auth::Pending::Digest { username, password }) => Some(DigestCredentials { username: username.clone(), password: password.clone() }),
         Some(harpoon_http::auth::Pending::OAuth2(_)) => return Err("OAuth2 necesita obtener un token al enviar. No se puede exportar automáticamente a cURL.".into()),
@@ -312,6 +325,30 @@ async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
 }
 
 #[tauri::command]
+fn list_cookies(root: PathBuf) -> Result<Vec<harpoon_http::cookies::CookieInfo>, String> {
+    let col = load(&root)?;
+    harpoon_http::cookies::PersistentCookies::for_root(&col.root)
+        .and_then(|jar| jar.list())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn add_cookie(root: PathBuf, url: String, cookie: String) -> Result<(), String> {
+    let col = load(&root)?;
+    harpoon_http::cookies::PersistentCookies::for_root(&col.root)
+        .and_then(|jar| jar.add(&url, &cookie))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_cookie(root: PathBuf, domain: String, path: String, name: String) -> Result<(), String> {
+    let col = load(&root)?;
+    harpoon_http::cookies::PersistentCookies::for_root(&col.root)
+        .and_then(|jar| jar.remove(&domain, &path, &name))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn save_response_file(path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|e| e.to_string())
 }
@@ -368,6 +405,9 @@ pub fn run() {
             list_folders,
             runtime_vars,
             save_runtime_vars,
+            list_cookies,
+            add_cookie,
+            remove_cookie,
             save_response_file,
             history,
             clear_history,

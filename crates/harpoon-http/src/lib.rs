@@ -15,6 +15,7 @@ use serde::Serialize;
 
 pub mod assert;
 pub mod auth;
+pub mod cookies;
 
 pub use assert::{Assertion, Outcome};
 pub use auth::TokenCache;
@@ -45,6 +46,8 @@ pub enum Error {
     Network(reqwest::Error),
     #[error("tiempo agotado tras {0:?}")]
     Timeout(Duration),
+    #[error("cookies: {0}")]
+    Cookies(String),
     #[error("OAuth2: {0}")]
     OAuth2(String),
     #[error("no se pudo leer el certificado {path}: {reason}")]
@@ -367,10 +370,15 @@ impl Client {
     fn build(settings: &Settings, root: Option<&std::path::Path>) -> Result<Self> {
         let timeout = Duration::from_millis(settings.timeout_ms);
         let base = root.unwrap_or_else(|| std::path::Path::new("."));
+        let jar = if let Some(root) = root {
+            cookies::PersistentCookies::for_root(root)?
+        } else {
+            std::sync::Arc::new(cookies::PersistentCookies::default())
+        };
         let mut builder = reqwest::Client::builder()
             .user_agent(concat!("harpoon/", env!("CARGO_PKG_VERSION")))
             .timeout(timeout)
-            .cookie_store(true)
+            .cookie_provider(jar)
             .danger_accept_invalid_certs(settings.insecure)
             .redirect(if settings.follow_redirects {
                 reqwest::redirect::Policy::limited(10)

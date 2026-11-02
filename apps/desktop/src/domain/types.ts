@@ -204,6 +204,16 @@ export function normalizeCollection(c: Collection): Collection {
   return { ...c, meta, environments, requests, folder_configs: c.folder_configs ?? {} };
 }
 
+export interface StoredCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  http_only: boolean;
+  session: boolean;
+}
+
 export interface HistoryEntry {
   at: string;
   env?: string;

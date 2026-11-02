@@ -1,7 +1,7 @@
 // Puente con el backend. Dentro de Tauri usa `invoke`; en un navegador
 // normal (desarrollo de la UI, capturas) usa un mock con la colección de ejemplo.
 
-import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, Outcome, Request } from "../domain/types";
+import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, Outcome, Request, StoredCookie } from "../domain/types";
 import type { CurlPrepared } from "../domain/curlExport";
 import { folderChain } from "../domain/paths";
 export { folderChain } from "../domain/paths";
@@ -25,6 +25,9 @@ export interface Api {
   deleteEnvironment(root: string, name: string): Promise<Collection>;
   saveMeta(root: string, meta: CollectionMeta): Promise<Collection>;
   sendRequest(root: string, env: string | null, request: Request, key: string): Promise<Exchange>;
+  listCookies(root: string): Promise<StoredCookie[]>;
+  addCookie(root: string, url: string, cookie: string): Promise<void>;
+  removeCookie(root: string, domain: string, path: string, name: string): Promise<void>;
   history(root: string, key: string): Promise<HistoryEntry[]>;
   clearHistory(root: string, key: string): Promise<void>;
   prepareCurl(root: string, key: string, env: string | null, request: Request): Promise<CurlPrepared>;
@@ -71,6 +74,9 @@ async function tauriApi(): Promise<Api> {
       const path = await save({ defaultPath: filename, title: "Guardar respuesta" });
       if (path) await invoke("save_response_file", { path, bytes: Array.from(bytes) });
     },
+    listCookies: (root) => invoke<StoredCookie[]>("list_cookies", { root }),
+    addCookie: (root, url, cookie) => invoke("add_cookie", { root, url, cookie }),
+    removeCookie: (root, domain, path, name) => invoke("remove_cookie", { root, domain, path, name }),
     history: (root, key) => invoke<HistoryEntry[]>("history", { root, key }),
     clearHistory: (root, key) => invoke("clear_history", { root, key }),
     runtimeVars: (root) => invoke<Record<string, string>>("runtime_vars", { root }),
@@ -131,6 +137,7 @@ function mockApi(): Api {
   };
   const folders = new Set<string>(["pets", "store", "user", "admin", "docs"]);
   let runtime: Record<string, string> = { token: "demo-token" };
+  let mockCookies: StoredCookie[] = [];
   const hist: Record<string, HistoryEntry[]> = {};
   const snapshot = async () => structuredClone(col);
   const resolveMockUrl = (key: string, env: string | null, url: string) => {
@@ -277,6 +284,14 @@ function mockApi(): Api {
       link.href = url; link.download = filename; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
+    listCookies: async () => structuredClone(mockCookies),
+    addCookie: async (_root, url, cookie) => {
+      const parsed = new URL(url), pair = cookie.split(";", 1)[0], at = pair.indexOf("=");
+      if (at <= 0 || !["http:", "https:"].includes(parsed.protocol)) throw new Error("Cookie o URL inválida");
+      const entry: StoredCookie = { name: pair.slice(0, at).trim(), value: pair.slice(at + 1).trim(), domain: parsed.hostname, path: "/", secure: /;\s*secure(?:;|$)/i.test(cookie), http_only: /;\s*httponly(?:;|$)/i.test(cookie), session: !/;\s*(expires|max-age)=/i.test(cookie) };
+      mockCookies = [...mockCookies.filter((c) => c.name !== entry.name || c.domain !== entry.domain || c.path !== entry.path), entry];
+    },
+    removeCookie: async (_root, domain, path, name) => { mockCookies = mockCookies.filter((c) => c.domain !== domain || c.path !== path || c.name !== name); },
     history: async (_r, key) => structuredClone(hist[key] ?? []),
     clearHistory: async (_r, key) => {
       delete hist[key];

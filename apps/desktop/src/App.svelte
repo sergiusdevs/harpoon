@@ -13,6 +13,7 @@
   import ThemePicker from "./components/settings/ThemePicker.svelte";
   import CurlImport from "./components/request/CurlImport.svelte";
   import VariableInspector from "./components/request/VariableInspector.svelte";
+  import CookieManager from "./components/collection/CookieManager.svelte";
 
   let sidebarW = $state(250);
 
@@ -69,7 +70,9 @@
 </div>
 
 <Dialog />
-{#if store.modal === "variables" && store.collection}
+{#if store.modal === "cookies" && store.collection}
+  <CookieManager />
+{:else if store.modal === "variables" && store.collection}
   <VariableInspector />
 {:else if store.modal === "curl" && store.collection}
   <CurlImport />

@@ -121,6 +121,8 @@ Las variables de ejecución se guardan en `.harpoon/vars.toml` (fuera de Git).
 - Respuesta con JSON plegable y búsqueda (`⌘F`), cabeceras, cookies, tests (Expect +
   scripts), consola de `console.log`, vista previa HTML en iframe aislado, imágenes,
   lo que se envió realmente e historial de las últimas 50 respuestas.
+- Gestor de cookies locales por colección: consulta, añade y elimina cookies desde el menú de entornos.
+  Se guardan en `.harpoon/cookies.json`, incluidas las de sesión.
 - Entornos con variables secretas (van a `*.secrets.toml`), ajustes de colección
   (auth global, variables, scripts, TLS, proxy).
 - Atajos: `⌘↩` enviar, `⌘S` guardar, `⌘N` nueva solicitud, `⇧⌘N` carpeta, `⌘E`
