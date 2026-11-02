@@ -18,6 +18,7 @@
   import CollectionRunner from "./components/collection/CollectionRunner.svelte";
   import CollectionSearch from "./components/collection/CollectionSearch.svelte";
   import LiveConnection from "./components/request/LiveConnection.svelte";
+  import MockServer from "./components/collection/MockServer.svelte";
 
   let sidebarW = $state(250);
 
@@ -74,7 +75,9 @@
 </div>
 
 <Dialog />
-{#if store.modal === "stream" && store.collection && store.draft}
+{#if store.modal === "mock" && store.collection}
+  <MockServer />
+{:else if store.modal === "stream" && store.collection && store.draft}
   <LiveConnection />
 {:else if store.modal === "search" && store.collection}
   <CollectionSearch />

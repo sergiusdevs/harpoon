@@ -47,6 +47,12 @@ enum Command {
     PostmanImport { file: PathBuf, dir: PathBuf },
     /// Importa un documento `OpenAPI` 3.0 o 3.1 en JSON o YAML.
     OpenapiImport { file: PathBuf, dir: PathBuf },
+    /// Inicia el servidor mock local de la colección.
+    Mock {
+        /// Puerto local (0 elige uno disponible automáticamente).
+        #[arg(long, default_value_t = 8787)]
+        port: u16,
+    },
     /// Lista las solicitudes y entornos de la colección.
     List,
     /// Envía una solicitud y muestra la respuesta.
@@ -112,6 +118,20 @@ async fn run() -> anyhow::Result<ExitCode> {
                 col.root.display()
             );
             println!("Prueba: cd {} && harpoon list", dir.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Mock { port } => {
+            let col = open(cli.collection.as_deref())?;
+            let config = harpoon_mock::load(&col.root).map_err(anyhow::Error::msg)?;
+            let server = harpoon_mock::start(config, port)
+                .await
+                .map_err(anyhow::Error::msg)?;
+            println!(
+                "Mock disponible en http://{} (Ctrl+C para detener)",
+                server.address
+            );
+            tokio::signal::ctrl_c().await?;
+            server.stop().await.map_err(anyhow::Error::msg)?;
             Ok(ExitCode::SUCCESS)
         }
         Command::OpenapiImport { file, dir } => {

@@ -36,6 +36,7 @@ Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
 | Búsqueda global en nombres, URL, cabeceras, cuerpos y scripts de solicitudes | ✅ |
 | GraphQL por HTTP: consulta, variables JSON y nombre de operación | ✅ |
 | WebSocket y SSE: conexiones en tiempo real desde la app | ✅ (con limitaciones) |
+| Servidor mock local con rutas y respuestas configurables | ✅ |
 | gRPC | ⏳ fase 5 |
 | OpenAPI import/export, docs HTML, servidor mock | ⏳ fase 6 |
 | Distribución (`.dmg`, Homebrew, winget) | ⏸ pospuesta |
@@ -73,6 +74,7 @@ harpoon share-import api.harpoon.json ./api-compartida
 harpoon postman-export api.postman_collection.json
 harpoon postman-import api.postman_collection.json ./api-importada
 harpoon openapi-import openapi.yaml ./api-openapi
+harpoon mock --port 8787       # respuestas configuradas en mocks.toml, solo localhost
 ```
 
 Códigos de salida: `0` todo correcto, `1` alguna comprobación falló, `2` error de uso o de red.

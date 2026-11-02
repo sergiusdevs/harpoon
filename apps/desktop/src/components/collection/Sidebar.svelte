@@ -129,6 +129,7 @@
   ];
   const rootMenu = (): Item[] => [
     { label: "Ejecutar colección…", action: () => store.openRunner() },
+    { label: "Servidor mock local…", action: () => { store.modal = "mock"; } },
     { label: "Importar / exportar colección…", action: () => { store.modal = "share"; } },
     { label: "Importar desde cURL…", action: () => store.importCurl() },
     { label: "Nueva solicitud…", action: () => store.newRequest("") },

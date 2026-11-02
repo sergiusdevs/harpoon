@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/harpoon-core", "crates/harpoon-cli", "crates/harpoon-http", "apps/desktop/src-tauri", "crates/harpoon-script"]
+members = ["crates/harpoon-core", "crates/harpoon-mock", "crates/harpoon-cli", "crates/harpoon-http", "apps/desktop/src-tauri", "crates/harpoon-script"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,7 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 harpoon-core = { path = "crates/harpoon-core" }
+harpoon-mock = { path = "crates/harpoon-mock" }
 harpoon-http = { path = "crates/harpoon-http" }
 harpoon-script = { path = "crates/harpoon-script" }
 

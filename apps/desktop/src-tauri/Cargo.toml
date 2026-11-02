@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 harpoon-core.workspace = true
+harpoon-mock.workspace = true
 harpoon-http.workspace = true
 harpoon-script.workspace = true
 serde.workspace = true

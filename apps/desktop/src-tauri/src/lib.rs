@@ -5,6 +5,7 @@
 // Los comandos de Tauri reciben sus argumentos por valor.
 #![allow(clippy::needless_pass_by_value)]
 
+mod mock;
 mod stream;
 
 use std::path::{Path, PathBuf};
@@ -473,9 +474,15 @@ fn save_runtime_vars(root: PathBuf, vars: IndexMap<String, String>) -> Result<()
 pub fn run() {
     tauri::Builder::default()
         .manage(stream::Sessions::default())
+        .manage(mock::MockState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            mock::load_mock,
+            mock::save_mock,
+            mock::mock_status,
+            mock::start_mock,
+            mock::stop_mock,
             stream::start_stream,
             stream::stream_send,
             stream::stop_stream,

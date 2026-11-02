@@ -221,3 +221,17 @@ Los scripts no se ejecutan en estas conexiones. OAuth2 y Digest no están
 disponibles para tiempo real; WebSocket tampoco admite proxy o TLS personalizado.
 SSE usa los ajustes HTTP de la colección y tiene un límite de conexión de 24 horas.
 La vista conserva hasta 200 mensajes, con contenido largo recortado visualmente.
+
+## Servidor mock local
+
+Desde el menú de entornos, **Servidor mock local** permite definir las rutas,
+códigos, cabeceras y cuerpos de respuesta. La configuración se guarda en
+`mocks.toml` en la raíz de la colección y se incluye al compartirla en formato
+Harpoon. Revisa los datos que incluyas en las respuestas antes de compartirla.
+
+El servidor escucha únicamente en `127.0.0.1`; permanece activo al cerrar el
+panel y se detiene al cerrar la aplicación. También se puede ejecutar con
+`harpoon mock --port 8787` y detener con Ctrl+C. El puerto `0` selecciona uno
+libre. Las rutas se evalúan en orden, el método debe coincidir y la query se
+ignora. Un segmento como `{id}` coincide con cualquier segmento no vacío.
+Las respuestas son estáticas y se aplican los cambios al reiniciar el servidor.

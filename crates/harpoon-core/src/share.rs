@@ -40,6 +40,14 @@ pub fn export(collection: &Collection) -> Result<SharedCollection> {
         "harpoon.toml".into(),
         fs::read_to_string(&meta).map_err(|e| io(&meta, e))?,
     );
+    let mocks = collection.root.join("mocks.toml");
+    if fs::symlink_metadata(&mocks).is_ok_and(|metadata| metadata.file_type().is_file()) {
+        files.insert(
+            "mocks.toml".into(),
+            fs::read_to_string(&mocks).map_err(|e| io(&mocks, e))?,
+        );
+        warnings.push("Las respuestas mock incluidas pueden contener datos sensibles".into());
+    }
     for directory in ["requests", "environments"] {
         let base = collection.root.join(directory);
         if !base.is_dir() {
@@ -143,6 +151,7 @@ fn validate(shared: &SharedCollection) -> Result<()> {
         let safe = !key.contains('\\')
             && components.iter().all(|c| matches!(c, Component::Normal(_)))
             && (key == "harpoon.toml"
+                || key == "mocks.toml"
                 || ((key.starts_with("requests/") || key.starts_with("environments/"))
                     && path.extension().is_some_and(|ext| ext == "toml")
                     && !key.ends_with(".secrets.toml")));

@@ -71,6 +71,7 @@
         <div class="menu-actions">
           <button type="button" onclick={() => { open = false; store.quickNewEnvironment(); }}><span aria-hidden="true">＋</span> Nuevo entorno</button>
           <button type="button" onclick={() => { open = false; store.modal = "cookies"; }}><span aria-hidden="true">◉</span> Gestionar cookies</button>
+          <button type="button" onclick={() => { open = false; store.modal = "mock"; }}><span aria-hidden="true">◇</span> Servidor mock local</button>
           <button type="button" onclick={() => { open = false; store.modal = "environments"; }}><span aria-hidden="true">⚙</span> Gestionar entornos <span class="shortcut">⌘E</span></button>
         </div>
       </div>

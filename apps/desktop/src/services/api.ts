@@ -9,6 +9,9 @@ import { emptyRequest, normalizeCollection } from "../domain/types";
 
 export interface SharePreview { name: string; warnings: string[] }
 export interface StreamEvent { kind: "open" | "closed" | "error" | "message" | "sent"; data: string; event: string; id: string }
+export interface MockRoute { enabled: boolean; method: import("../domain/types").Method; path: string; status: number; headers: Record<string, string>; body: string }
+export interface MockConfig { routes: MockRoute[] }
+export interface MockStatus { root: string; address: string }
 
 export interface Api {
   openCollection(path: string): Promise<Collection>;
@@ -39,6 +42,11 @@ export interface Api {
   startStream(root: string, key: string, env: string | null, request: Request, protocol: "websocket" | "sse", id: string, onEvent: (event: StreamEvent) => void): Promise<void>;
   sendStream(id: string, data: string): Promise<void>;
   stopStream(id: string): Promise<void>;
+  loadMock(root: string): Promise<MockConfig>;
+  saveMock(root: string, config: MockConfig): Promise<void>;
+  mockStatus(): Promise<MockStatus | null>;
+  startMock(root: string, port: number): Promise<MockStatus>;
+  stopMock(): Promise<void>;
   listCookies(root: string): Promise<StoredCookie[]>;
   addCookie(root: string, url: string, cookie: string): Promise<void>;
   removeCookie(root: string, domain: string, path: string, name: string): Promise<void>;
@@ -111,6 +119,11 @@ async function tauriApi(): Promise<Api> {
     },
     sendStream: (id, data) => invoke("stream_send", { id, data }),
     stopStream: (id) => invoke("stop_stream", { id }),
+    loadMock: (root) => invoke<MockConfig>("load_mock", { root }),
+    saveMock: (root, config) => invoke("save_mock", { root, config }),
+    mockStatus: () => invoke<MockStatus | null>("mock_status"),
+    startMock: (root, port) => invoke<MockStatus>("start_mock", { root, port }),
+    stopMock: () => invoke("stop_mock"),
     listCookies: (root) => invoke<StoredCookie[]>("list_cookies", { root }),
     addCookie: (root, url, cookie) => invoke("add_cookie", { root, url, cookie }),
     removeCookie: (root, domain, path, name) => invoke("remove_cookie", { root, domain, path, name }),
@@ -332,6 +345,11 @@ function mockApi(): Api {
     startStream: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     sendStream: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     stopStream: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    loadMock: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    saveMock: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    mockStatus: async () => null,
+    startMock: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
+    stopMock: async () => { throw new Error("Disponible en la aplicación de escritorio"); },
     listCookies: async () => structuredClone(mockCookies),
     addCookie: async (_root, url, cookie) => {
       const parsed = new URL(url), pair = cookie.split(";", 1)[0], at = pair.indexOf("=");
