@@ -43,7 +43,7 @@ timeout_ms = 30000
 follow_redirects = true
 insecure = false                # true = no verificar TLS (solo desarrollo)
 # ca_cert = "certs/ca.pem"           # CA adicional; client_cert / client_key para mTLS
-# proxy = "http://127.0.0.1:8888"   # si falta, se respetan HTTP(S)_PROXY / NO_PROXY
+# proxy = "http://127.0.0.1:8888"   # respeta NO_PROXY; si falta, se usan HTTP(S)_PROXY / NO_PROXY
 ```
 
 ## `environments/<nombre>.toml`
@@ -221,6 +221,8 @@ Los scripts no se ejecutan en estas conexiones. WebSocket admite proxy HTTP/HTTP
 mediante CONNECT y los ajustes TLS de la colección. Con OAuth2, el token se añade
 al handshake y, si el servidor responde 401, se renueva y se reintenta una vez;
 con Digest, el handshake responde al reto `WWW-Authenticate` del servidor.
+El handshake envía las cookies de la colección y guarda las `Set-Cookie` que
+reciba, también cuando el servidor rechaza la conexión.
 SSE usa los ajustes HTTP de la colección y tiene un límite de conexión de 24 horas.
 La vista conserva hasta 200 mensajes, con contenido largo recortado visualmente.
 

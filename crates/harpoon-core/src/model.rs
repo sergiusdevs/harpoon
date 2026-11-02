@@ -278,8 +278,8 @@ pub struct Settings {
     /// Seguir redirecciones (máximo 10).
     #[serde(default = "default_true")]
     pub follow_redirects: bool,
-    /// Proxy explícito (`http://host:puerto`). Si no se indica, se respetan
-    /// `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` del entorno.
+    /// Proxy explícito (`http://host:puerto`), que respeta `NO_PROXY` del entorno.
+    /// Si no se indica, se usan `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy: Option<String>,
     /// No verificar el certificado TLS del servidor (solo desarrollo).

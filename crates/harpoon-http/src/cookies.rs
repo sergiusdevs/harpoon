@@ -129,6 +129,23 @@ impl PersistentCookies {
         self.save(&store)
     }
 
+    /// Guarda las cabeceras `Set-Cookie` recibidas de `url`; las no válidas se ignoran.
+    pub fn store_set_cookies<'a>(
+        &self,
+        url: &str,
+        values: impl IntoIterator<Item = &'a str>,
+    ) -> Result<()> {
+        let url = Url::parse(url).map_err(|e| Error::Cookies(e.to_string()))?;
+        let mut store = self
+            .store
+            .write()
+            .map_err(|e| Error::Cookies(e.to_string()))?;
+        for value in values {
+            let _ = store.parse(value, &url);
+        }
+        self.save(&store)
+    }
+
     pub fn remove(&self, domain: &str, path: &str, name: &str) -> Result<()> {
         let mut store = self
             .store

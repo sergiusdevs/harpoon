@@ -178,15 +178,7 @@ fn ws_request(
         request.headers_mut().insert(AUTHORIZATION, value);
     }
     if !request.headers().contains_key("cookie") {
-        let mut cookie_url = url.clone();
-        let scheme = if url.scheme() == "wss" {
-            "https"
-        } else {
-            "http"
-        };
-        cookie_url
-            .set_scheme(scheme)
-            .map_err(|()| "URL de cookies no válida")?;
+        let cookie_url = cookie_url(url)?;
         if let Some(cookie) = harpoon_http::cookies::PersistentCookies::for_root(&collection.root)
             .and_then(|jar| jar.header_for_url(cookie_url.as_str()))
             .map_err(|e| e.to_string())?
@@ -198,10 +190,46 @@ fn ws_request(
     }
     Ok(request)
 }
+/// URL http/https equivalente, con la que se indexan las cookies de la colección.
+fn cookie_url(url: &url::Url) -> Result<url::Url, String> {
+    let mut cookie_url = url.clone();
+    let scheme = if url.scheme() == "wss" {
+        "https"
+    } else {
+        "http"
+    };
+    cookie_url
+        .set_scheme(scheme)
+        .map_err(|()| "URL de cookies no válida")?;
+    Ok(cookie_url)
+}
+/// Guarda en el jar de la colección las `Set-Cookie` de la respuesta al handshake.
+fn store_cookies(
+    collection: &harpoon_core::Collection,
+    url: &url::Url,
+    response: &ws_transport::HandshakeResponse,
+) {
+    let values: Vec<&str> = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .collect();
+    if values.is_empty() {
+        return;
+    }
+    let stored = cookie_url(url)
+        .map_err(harpoon_http::Error::Cookies)
+        .and_then(|cookie_url| {
+            harpoon_http::cookies::PersistentCookies::for_root(&collection.root)
+                .and_then(|jar| jar.store_set_cookies(cookie_url.as_str(), values))
+        });
+    if let Err(error) = stored {
+        eprintln!("No se pudieron guardar las cookies: {error}");
+    }
+}
 /// Respuesta HTTP del handshake si el servidor lo rechazó con 401.
-fn unauthorized(
-    error: &ws_transport::ConnectError,
-) -> Option<&tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>> {
+fn unauthorized(error: &ws_transport::ConnectError) -> Option<&ws_transport::HandshakeResponse> {
     match error {
         ws_transport::ConnectError::Handshake(tokio_tungstenite::tungstenite::Error::Http(
             response,
@@ -221,7 +249,15 @@ async fn open_websocket(
     let attempt = |authorization: Option<String>| async move {
         let request = ws_request(collection, prepared, url, authorization.as_deref())
             .map_err(ws_transport::ConnectError::Transport)?;
-        ws_transport::connect(collection, url, request, config).await
+        let result = ws_transport::connect(collection, url, request, config).await;
+        match &result {
+            Ok((_, response)) => store_cookies(collection, url, response),
+            Err(ws_transport::ConnectError::Handshake(
+                tokio_tungstenite::tungstenite::Error::Http(response),
+            )) => store_cookies(collection, url, response),
+            Err(_) => {}
+        }
+        result.map(|(socket, _)| socket)
     };
     match &prepared.pending_auth {
         None => attempt(None).await.map_err(|e| e.to_string()),

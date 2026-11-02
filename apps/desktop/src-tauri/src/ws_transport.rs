@@ -31,13 +31,53 @@ pub enum ConnectError {
     Transport(String),
     Handshake(tungstenite::Error),
 }
+pub type HandshakeResponse = tungstenite::http::Response<Option<Vec<u8>>>;
 impl std::fmt::Display for ConnectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Transport(e) => f.write_str(e),
+            Self::Handshake(tungstenite::Error::Http(response)) => rejected(f, response),
             Self::Handshake(e) => write!(f, "{e}"),
         }
     }
+}
+/// Describe una respuesta HTTP que no completó el cambio a WebSocket.
+fn rejected(f: &mut std::fmt::Formatter<'_>, response: &HandshakeResponse) -> std::fmt::Result {
+    let status = response.status();
+    write!(
+        f,
+        "El servidor rechazó la conexión WebSocket (HTTP {}",
+        status.as_u16()
+    )?;
+    if let Some(reason) = status.canonical_reason() {
+        write!(f, " {reason}")?;
+    }
+    f.write_str(")")?;
+    let hint = match status.as_u16() {
+        401 => "revisa la autenticación de la solicitud",
+        403 => "las credenciales no tienen acceso a este recurso",
+        404 => "revisa la ruta de la URL",
+        407 => "el proxy necesita autenticación",
+        200..=399 => "el servidor no aceptó el cambio de protocolo; revisa la URL",
+        _ => "",
+    };
+    if !hint.is_empty() {
+        write!(f, ": {hint}")?;
+    }
+    let body = response
+        .body()
+        .as_deref()
+        .map(String::from_utf8_lossy)
+        .map(|body| body.split_whitespace().collect::<Vec<_>>().join(" "))
+        .unwrap_or_default();
+    if !body.is_empty() {
+        let mut snippet: String = body.chars().take(200).collect();
+        if snippet.len() < body.len() {
+            snippet.push('…');
+        }
+        write!(f, ". Respuesta: {snippet}")?;
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -133,7 +173,17 @@ fn tls_config(collection: &Collection) -> Result<Arc<ClientConfig>, String> {
     };
     Ok(Arc::new(config))
 }
-fn proxy_for(collection: &Collection, target: &url::Url) -> Result<Option<Intercept>, String> {
+/// `NO_PROXY`/`no_proxy` del entorno, como lo interpretan curl y reqwest.
+fn no_proxy_env() -> String {
+    std::env::var("NO_PROXY")
+        .or_else(|_| std::env::var("no_proxy"))
+        .unwrap_or_default()
+}
+fn proxy_for(
+    collection: &Collection,
+    target: &url::Url,
+    no_proxy: &str,
+) -> Result<Option<Intercept>, String> {
     let mut http_target = target.clone();
     let scheme = if target.scheme() == "wss" {
         "https"
@@ -152,13 +202,11 @@ fn proxy_for(collection: &Collection, target: &url::Url) -> Result<Option<Interc
         if !matches!(parsed.scheme(), "http" | "https") {
             return Err("El proxy debe usar http o https".into());
         }
-        let found = Matcher::builder()
+        return Ok(Matcher::builder()
             .all(proxy.as_str())
+            .no(no_proxy)
             .build()
-            .intercept(&uri);
-        return found
-            .map(Some)
-            .ok_or_else(|| "No se pudo configurar el proxy".into());
+            .intercept(&uri));
     }
     Ok(Matcher::from_system().intercept(&uri))
 }
@@ -176,7 +224,7 @@ async fn transport(
     } else {
         format!("{host}:{port}")
     };
-    let Some(proxy) = proxy_for(collection, target)? else {
+    let Some(proxy) = proxy_for(collection, target, &no_proxy_env())? else {
         return Ok(Box::new(
             TcpStream::connect((host.trim_matches(['[', ']']), port))
                 .await
@@ -247,17 +295,15 @@ pub async fn connect(
     target: &url::Url,
     request: Request<()>,
     config: WebSocketConfig,
-) -> Result<Socket, ConnectError> {
+) -> Result<(Socket, HandshakeResponse), ConnectError> {
     let run = async {
         let tls = tls_config(collection).map_err(ConnectError::Transport)?;
         let io = transport(collection, target, tls.clone())
             .await
             .map_err(ConnectError::Transport)?;
-        let (socket, _) =
-            client_async_tls_with_config(request, io, Some(config), Some(Connector::Rustls(tls)))
-                .await
-                .map_err(ConnectError::Handshake)?;
-        Ok(socket)
+        client_async_tls_with_config(request, io, Some(config), Some(Connector::Rustls(tls)))
+            .await
+            .map_err(ConnectError::Handshake)
     };
     let timeout = collection.meta.settings.timeout_ms;
     if timeout == 0 {
@@ -268,3 +314,5 @@ pub async fn connect(
             .map_err(|_| ConnectError::Transport("Tiempo de conexión agotado".into()))?
     }
 }
+#[cfg(test)]
+mod tests;

@@ -536,7 +536,11 @@ impl Client {
                 reqwest::redirect::Policy::none()
             });
         if let Some(proxy) = &settings.proxy {
-            builder = builder.proxy(reqwest::Proxy::all(proxy).map_err(Error::Client)?);
+            // Como curl: el proxy explícito respeta `NO_PROXY`/`no_proxy` del entorno.
+            let proxy = reqwest::Proxy::all(proxy)
+                .map_err(Error::Client)?
+                .no_proxy(reqwest::NoProxy::from_env());
+            builder = builder.proxy(proxy);
         }
         if let Some(ca) = &settings.ca_cert {
             let pem = read_pem(base, ca)?;

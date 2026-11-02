@@ -16,6 +16,15 @@ async fn spawn_ws(
     check: impl Fn(&str) -> bool + Send + Sync + 'static,
     challenge: Option<&'static str>,
 ) -> (String, Arc<Mutex<Vec<String>>>) {
+    spawn_ws_with_cookie(check, challenge, None).await
+}
+
+/// Como `spawn_ws`, pero añadiendo `Set-Cookie` tanto al 101 como al 401.
+async fn spawn_ws_with_cookie(
+    check: impl Fn(&str) -> bool + Send + Sync + 'static,
+    challenge: Option<&'static str>,
+    cookie: Option<&'static str>,
+) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -27,7 +36,7 @@ async fn spawn_ws(
             let log = log.clone();
             tokio::spawn(async move {
                 #[allow(clippy::result_large_err)]
-                let callback = |request: &WsRequest, response: WsResponse| {
+                let callback = |request: &WsRequest, mut response: WsResponse| {
                     let auth = request
                         .headers()
                         .get("authorization")
@@ -36,10 +45,23 @@ async fn spawn_ws(
                         .to_owned();
                     log.lock().unwrap().push(auth.clone());
                     if check(&auth) {
+                        if let Some(cookie) = cookie {
+                            response
+                                .headers_mut()
+                                .append("set-cookie", "abierta=1; Path=/".parse().unwrap());
+                            response
+                                .headers_mut()
+                                .append("set-cookie", cookie.parse().unwrap());
+                        }
                         return Ok(response);
                     }
                     let mut error = ErrorResponse::new(None);
                     *error.status_mut() = StatusCode::UNAUTHORIZED;
+                    if cookie.is_some() {
+                        error
+                            .headers_mut()
+                            .append("set-cookie", "reto=1; Path=/".parse().unwrap());
+                    }
                     if let Some(challenge) = challenge {
                         error
                             .headers_mut()
@@ -137,7 +159,10 @@ async fn digest_sin_reto_devuelve_el_error() {
         password: "p".into(),
     };
     let error = open(&col, &url, auth).await.unwrap_err();
-    assert!(error.contains("401"), "{error}");
+    assert!(
+        error.contains("HTTP 401 Unauthorized") && error.contains("autenticación"),
+        "{error}"
+    );
     assert_eq!(seen.lock().unwrap().len(), 1);
 }
 
@@ -174,4 +199,30 @@ async fn oauth2_envia_el_token_y_renueva_tras_401() {
         *seen.lock().unwrap(),
         ["Bearer tok1", "Bearer tok1", "Bearer tok3"]
     );
+}
+
+#[tokio::test]
+async fn guarda_las_cookies_del_handshake() {
+    let (url, _) = spawn_ws_with_cookie(
+        |auth| !auth.is_empty(),
+        Some("Digest realm=\"r\", nonce=\"n\""),
+        Some("sesion=abc; Path=/; HttpOnly"),
+    )
+    .await;
+    let col = collection();
+    let auth = Auth::Digest {
+        username: "u".into(),
+        password: "p".into(),
+    };
+    open(&col, &url, auth).await.unwrap();
+    let http_url = url.replacen("ws://", "http://", 1);
+    let header = harpoon_http::cookies::PersistentCookies::for_root(&col.root)
+        .unwrap()
+        .header_for_url(&http_url)
+        .unwrap()
+        .unwrap_or_default();
+    for cookie in ["reto=1", "abierta=1", "sesion=abc"] {
+        assert!(header.contains(cookie), "falta {cookie} en {header}");
+    }
+    assert!(col.root.join(".harpoon/cookies.json").is_file());
 }
