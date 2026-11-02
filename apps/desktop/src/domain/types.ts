@@ -56,6 +56,7 @@ export type MultipartPart =
 export type Body =
   | { type: "none" }
   | { type: "json"; json: string }
+  | { type: "graphql"; query: string; variables: string; operation_name: string }
   | { type: "text"; text: string }
   | { type: "xml"; xml: string }
   | { type: "binary"; path: string }
@@ -181,7 +182,7 @@ export function normalizeRequest(r: Partial<Request> & { name: string; url: stri
     query: r.query ?? {},
     disabled_query: r.disabled_query ?? [],
     auth: normalizeAuth(r.auth as Auth | undefined),
-    body: r.body ?? { type: "none" },
+    body: r.body?.type === "graphql" ? { ...r.body, variables: r.body.variables ?? "", operation_name: r.body.operation_name ?? "" } : r.body ?? { type: "none" },
     scripts: { pre: "", post: "", test: "", ...(r.scripts ?? {}) },
     expect: { headers: {}, body_contains: [], ...(r.expect ?? {}) },
     docs: r.docs ?? "",

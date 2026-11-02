@@ -194,3 +194,19 @@ documentos OpenAPI 3.0 y 3.1 en YAML o JSON. Se generan solicitudes agrupadas
 por su primera etiqueta, con servidores, parámetros y ejemplos disponibles.
 Se indican los datos que requieren configuración manual. Las referencias
 externas, esquemas, respuestas y validaciones no se convierten.
+
+## GraphQL por HTTP
+
+Selecciona `GraphQL` en el cuerpo de la solicitud para editar la consulta,
+las variables JSON y, opcionalmente, el nombre de la operación. Al enviarla,
+Harpoon construye el objeto JSON de GraphQL y usa la autenticación, cabeceras,
+scripts y aserciones de la solicitud. Las variables de Harpoon se interpolan
+en las cadenas de las variables GraphQL. El formato guardado es:
+
+```toml
+[body]
+type = "graphql"
+query = "query GetUser($id: ID!) { user(id: $id) { name } }"
+variables = '{ "id": "{{user_id}}" }'
+operation_name = "GetUser"
+```

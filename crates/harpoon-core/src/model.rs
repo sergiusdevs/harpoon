@@ -133,6 +133,13 @@ pub enum Body {
     Json {
         json: String,
     },
+    Graphql {
+        query: String,
+        #[serde(default)]
+        variables: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        operation_name: String,
+    },
     Text {
         text: String,
     },

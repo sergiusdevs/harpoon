@@ -264,6 +264,11 @@ fn parse_items(
                         _ => Body::Text { text: raw },
                     }
                 }
+                "graphql" => Body::Graphql {
+                    query: text(&b["graphql"], "query"),
+                    variables: text(&b["graphql"], "variables"),
+                    operation_name: String::new(),
+                },
                 "urlencoded" => {
                     if b["urlencoded"]
                         .as_array()
@@ -513,6 +518,19 @@ fn post_request(r: &Request, warnings: &mut Vec<String>) -> Value {
         Body::None => Value::Null,
         Body::Json { json: j } => {
             json!({"mode":"raw","raw":j,"options":{"raw":{"language":"json"}}})
+        }
+        Body::Graphql {
+            query,
+            variables,
+            operation_name,
+        } => {
+            if !operation_name.is_empty() {
+                warnings.push(format!(
+                    "{}: nombre de operación GraphQL no exportado",
+                    r.name
+                ));
+            }
+            json!({"mode":"graphql","graphql":{"query":query,"variables":variables}})
         }
         Body::Xml { xml } => json!({"mode":"raw","raw":xml,"options":{"raw":{"language":"xml"}}}),
         Body::Text { text: t } => json!({"mode":"raw","raw":t}),

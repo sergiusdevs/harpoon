@@ -51,10 +51,28 @@ fn to_script_request(req: &Request) -> ScriptRequest {
         body: match &req.body {
             Body::None | Body::Form { .. } | Body::Multipart { .. } | Body::Binary { .. } => None,
             Body::Json { json } => Some(json.clone()),
+            Body::Graphql {
+                query,
+                variables,
+                operation_name,
+            } => graphql_script_body(query, variables, operation_name),
             Body::Text { text } => Some(text.clone()),
             Body::Xml { xml } => Some(xml.clone()),
         },
     }
+}
+
+fn graphql_script_body(query: &str, variables: &str, operation_name: &str) -> Option<String> {
+    let vars: serde_json::Value = if variables.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(variables).ok()?
+    };
+    let mut body = serde_json::json!({"query": query, "variables": vars});
+    if !operation_name.trim().is_empty() {
+        body["operationName"] = operation_name.into();
+    }
+    Some(body.to_string())
 }
 
 fn apply_script_request(req: &mut Request, s: ScriptRequest) {
@@ -64,6 +82,22 @@ fn apply_script_request(req: &mut Request, s: ScriptRequest) {
     req.query = s.query;
     match (&req.body, s.body) {
         (Body::Form { .. } | Body::Multipart { .. } | Body::Binary { .. }, _) => {}
+        (
+            Body::Graphql {
+                query,
+                variables,
+                operation_name,
+            },
+            body,
+        ) => {
+            if let Some(body) = body {
+                if graphql_script_body(query, variables, operation_name).as_deref()
+                    != Some(body.as_str())
+                {
+                    req.body = Body::Json { json: body };
+                }
+            }
+        }
         (Body::Json { .. }, Some(b)) => req.body = Body::Json { json: b },
         (Body::Text { .. }, Some(b)) => req.body = Body::Text { text: b },
         (Body::Xml { .. }, Some(b)) => req.body = Body::Xml { xml: b },

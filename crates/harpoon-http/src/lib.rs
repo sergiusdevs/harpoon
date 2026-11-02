@@ -42,6 +42,8 @@ pub enum Error {
     },
     #[error("formulario multipart inválido: {0}")]
     Multipart(String),
+    #[error("GraphQL: {0}")]
+    Graphql(String),
     #[error("fallo de red: {}", describe(.0))]
     Network(reqwest::Error),
     #[error("tiempo agotado tras {0:?}")]
@@ -151,6 +153,24 @@ impl Response {
     }
 }
 
+fn interpolate_json(value: &mut serde_json::Value, scope: &Scope) -> Result<()> {
+    match value {
+        serde_json::Value::String(text) => *text = scope.interpolate(text)?,
+        serde_json::Value::Array(items) => {
+            for item in items {
+                interpolate_json(item, scope)?;
+            }
+        }
+        serde_json::Value::Object(items) => {
+            for item in items.values_mut() {
+                interpolate_json(item, scope)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Resuelve variables y auth de una solicitud dentro de su colección.
 #[allow(clippy::too_many_lines)]
 pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Result<Prepared> {
@@ -245,6 +265,39 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
                 .entry("Content-Type".into())
                 .or_insert_with(|| "application/json".into());
             Some(scope.interpolate(json)?)
+        }
+        Body::Graphql {
+            query,
+            variables,
+            operation_name,
+        } => {
+            if query.trim().is_empty() {
+                return Err(Error::Graphql("la consulta está vacía".into()));
+            }
+            let mut values: serde_json::Value = if variables.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                serde_json::from_str(variables)
+                    .map_err(|e| Error::Graphql(format!("variables JSON no válidas: {e}")))?
+            };
+            if !values.is_object() {
+                return Err(Error::Graphql(
+                    "las variables deben ser un objeto JSON".into(),
+                ));
+            }
+            interpolate_json(&mut values, scope)?;
+            let mut payload =
+                serde_json::json!({"query": scope.interpolate(query)?, "variables": values});
+            if !operation_name.trim().is_empty() {
+                payload["operationName"] = scope.interpolate(operation_name)?.into();
+            }
+            if !headers
+                .keys()
+                .any(|name| name.eq_ignore_ascii_case("content-type"))
+            {
+                headers.insert("Content-Type".into(), "application/json".into());
+            }
+            Some(payload.to_string())
         }
         Body::Text { text } => Some(scope.interpolate(text)?),
         Body::Xml { xml } => {

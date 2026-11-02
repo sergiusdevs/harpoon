@@ -114,8 +114,9 @@
   function setBodyKind(kind: Body["type"]) {
     const text = bodyText;
     const next: Body =
-      kind === "json" ? { type: "json", json: text } : kind === "text" ? { type: "text", text } : kind === "xml" ? { type: "xml", xml: text } : kind === "binary" ? { type: "binary", path: "" } : kind === "form" ? { type: "form", fields: {} } : kind === "multipart" ? { type: "multipart", parts: [] } : { type: "none" };
+      kind === "json" ? { type: "json", json: text } : kind === "graphql" ? { type: "graphql", query: "", variables: "{}", operation_name: "" } : kind === "text" ? { type: "text", text } : kind === "xml" ? { type: "xml", xml: text } : kind === "binary" ? { type: "binary", path: "" } : kind === "form" ? { type: "form", fields: {} } : kind === "multipart" ? { type: "multipart", parts: [] } : { type: "none" };
     set("body", next);
+    if (kind === "graphql" && req?.method === "GET") set("method", "POST");
   }
 
   let jsonError = $state<string | null>(null);
@@ -227,7 +228,7 @@
         <div class="body">
           <div class="body-bar">
             <div class="segmented" role="radiogroup" aria-label="Tipo de cuerpo">
-              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["text", "Texto"], ["xml", "XML"], ["binary", "Binario"], ["form", "Formulario"], ["multipart", "Multipart"]] as [k, label]}
+              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["graphql", "GraphQL"], ["text", "Texto"], ["xml", "XML"], ["binary", "Binario"], ["form", "Formulario"], ["multipart", "Multipart"]] as [k, label]}
                 <button role="radio" aria-checked={bodyKind === k} class:active={bodyKind === k} onclick={() => setBodyKind(k as Body["type"])}>{label}</button>
               {/each}
             </div>
@@ -239,6 +240,14 @@
           {#if bodyKind === "json" || bodyKind === "text" || bodyKind === "xml"}
             <div class="editor-wrap">
               <CodeEditor value={bodyText} language={bodyKind === "json" ? "json" : "text"} onchange={setBodyText} />
+            </div>
+          {:else if req.body.type === "graphql"}
+            <div class="graphql-editor">
+              <label>Nombre de operación <span class="muted">opcional</span><input value={req.body.operation_name ?? ""} placeholder="Nombre de operación" oninput={(e) => { if (req.body.type === "graphql") set("body", { ...req.body, operation_name: e.currentTarget.value }); }} /></label>
+              <div class="graphql-label">Consulta</div>
+              <div class="graphql-query"><CodeEditor value={req.body.query} language="text" onchange={(value) => { if (req.body.type === "graphql") set("body", { ...req.body, query: value }); }} /></div>
+              <div class="graphql-label">Variables <span class="muted">JSON</span></div>
+              <div class="graphql-vars"><CodeEditor value={req.body.variables ?? ""} language="json" onchange={(value) => { if (req.body.type === "graphql") set("body", { ...req.body, variables: value }); }} /></div>
             </div>
           {:else if bodyKind === "binary"}
             <div class="binary-editor">
@@ -386,6 +395,10 @@
   }
   .body-bar .segmented { max-width: 100%; overflow-x: auto; }
   .body-bar .segmented button { white-space: nowrap; }
+  .graphql-editor { display: flex; flex-direction: column; gap: 7px; flex: 1; min-height: 360px; }
+  .graphql-editor label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+  .graphql-label { font-size: 12px; color: var(--text-muted); }
+  .graphql-query, .graphql-vars { min-height: 130px; flex: 1; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-raised); }
   .json-error {
     color: var(--err);
     font-size: 11.5px;

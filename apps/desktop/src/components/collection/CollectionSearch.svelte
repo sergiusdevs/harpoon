@@ -30,6 +30,7 @@
     for (const [name, value] of Object.entries(request.query)) { search("Nombre de parámetro", name); search(`Parámetro · ${name}`, value); }
     switch (request.body.type) {
       case "json": search("Cuerpo JSON", request.body.json); break;
+      case "graphql": search("Consulta GraphQL", request.body.query); search("Variables GraphQL", request.body.variables); search("Operación GraphQL", request.body.operation_name); break;
       case "text": search("Cuerpo", request.body.text); break;
       case "xml": search("Cuerpo XML", request.body.xml); break;
       case "binary": search("Ruta del archivo", request.body.path); break;
