@@ -120,6 +120,7 @@
     { label: "Borrar…", action: () => store.deleteRequest(key), danger: true, sep: true },
   ];
   const folderMenu = (path: string): Item[] => [
+    { label: "Ejecutar carpeta…", action: () => store.openRunner(path) },
     { label: "Variables de la carpeta…", action: () => { store.editingFolder = path; store.modal = "folder"; } },
     { label: "Nueva solicitud…", action: () => store.newRequest(path) },
     { label: "Nueva subcarpeta…", action: () => store.newFolder(path) },
@@ -127,6 +128,7 @@
     { label: "Borrar carpeta…", action: () => store.deleteFolder(path), danger: true },
   ];
   const rootMenu = (): Item[] => [
+    { label: "Ejecutar colección…", action: () => store.openRunner() },
     { label: "Importar / exportar colección…", action: () => { store.modal = "share"; } },
     { label: "Importar desde cURL…", action: () => store.importCurl() },
     { label: "Nueva solicitud…", action: () => store.newRequest("") },
@@ -285,6 +287,7 @@
     <div class="collection">
       <div class="col-row">
         <div class="col-name" title={store.collection.root}>{store.collection.meta.name}</div>
+        <button class="btn icon" title="Ejecutar colección" aria-label="Ejecutar colección" onclick={() => store.openRunner()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg></button>
         <button class="btn icon" title="Ajustes de la colección" aria-label="Ajustes de la colección" onclick={() => (store.modal = "settings")}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
         </button>
@@ -383,6 +386,8 @@
     justify-content: space-between;
   }
   .col-name {
+    flex: 1;
+    min-width: 0;
     font-weight: 600;
     font-size: 13px;
     overflow: hidden;

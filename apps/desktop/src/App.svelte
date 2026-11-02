@@ -15,6 +15,7 @@
   import VariableInspector from "./components/request/VariableInspector.svelte";
   import CookieManager from "./components/collection/CookieManager.svelte";
   import ShareCollection from "./components/collection/ShareCollection.svelte";
+  import CollectionRunner from "./components/collection/CollectionRunner.svelte";
 
   let sidebarW = $state(250);
 
@@ -71,7 +72,9 @@
 </div>
 
 <Dialog />
-{#if store.modal === "share"}
+{#if store.modal === "runner" && store.collection}
+  <CollectionRunner />
+{:else if store.modal === "share"}
   <ShareCollection />
 {:else if store.modal === "cookies" && store.collection}
   <CookieManager />

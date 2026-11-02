@@ -32,6 +32,7 @@ Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
 | Variables de ejecución persistentes (login → token → resto) | ✅ |
 | CLI: `init`, `list`, `send`, `run` con `--json`, `--junit`, `--data`, `--iterations`, `--bail` | ✅ |
 | App de escritorio (Tauri 2 + Svelte 5): árbol con arrastrar y soltar, editor, respuesta, tests, consola, vista HTML, entornos y ajustes | ✅ |
+| Ejecutar colecciones o carpetas en la app y consultar sus fallos | ✅ |
 | GraphQL, WebSocket, gRPC | ⏳ fase 5 |
 | OpenAPI import/export, docs HTML, servidor mock | ⏳ fase 6 |
 | Distribución (`.dmg`, Homebrew, winget) | ⏸ pospuesta |

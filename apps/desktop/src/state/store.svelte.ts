@@ -35,8 +35,14 @@ class Store {
   runtimeVariables = $state<Record<string, string>>({});
   /** Entrada del historial que se está viendo (null = respuesta en vivo). */
   viewingHistory = $state<HistoryEntry | null>(null);
-  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | null>(null);
+  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | null>(null);
   editingFolder = $state("");
+  runFolder = $state("");
+
+  openRunner(folder = "") {
+    this.runFolder = folder;
+    this.modal = "runner";
+  }
 
   /** Pide confirmación antes de perder el borrador; devuelve false si queda pendiente. */
   confirmDiscard(action: () => void | Promise<void>): boolean {
