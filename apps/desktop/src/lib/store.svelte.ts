@@ -17,6 +17,8 @@ class Store {
   sending = $state(false);
   status = $state<Status>({ kind: "idle", text: "Abre una colección" });
   theme = $state<"dark" | "light">("dark");
+  /** Carpeta elegida que aún no tiene colección: se ofrece crearla. */
+  pendingInit = $state<string | null>(null);
 
   async open(path: string) {
     try {
@@ -24,6 +26,33 @@ class Store {
       this.collection = col;
       this.env = col.meta.default_environment;
       this.status = { kind: "ok", text: `${col.meta.name} · ${col.root}` };
+      const first = Object.keys(col.requests)[0];
+      if (first) this.select(first);
+      try {
+        localStorage.setItem("harpoon.lastCollection", path);
+      } catch {
+        /* sin almacenamiento */
+      }
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes("harpoon.toml")) {
+        this.pendingInit = path;
+        this.status = { kind: "idle", text: "Esa carpeta no tiene colección todavía" };
+      } else {
+        this.status = { kind: "err", text: msg };
+      }
+    }
+  }
+
+  async createHere(name: string) {
+    const path = this.pendingInit;
+    if (!path) return;
+    try {
+      const col = await (await api).initCollection(path, name.trim() || basename(path));
+      this.pendingInit = null;
+      this.collection = col;
+      this.env = col.meta.default_environment;
+      this.status = { kind: "ok", text: `Colección creada en ${col.root}` };
       const first = Object.keys(col.requests)[0];
       if (first) this.select(first);
       try {
@@ -113,6 +142,10 @@ class Store {
 }
 
 export const store = new Store();
+
+export function basename(path: string): string {
+  return path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
+}
 
 export function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

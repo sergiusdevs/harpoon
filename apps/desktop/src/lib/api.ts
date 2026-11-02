@@ -6,6 +6,7 @@ import { emptyRequest } from "./types";
 
 export interface Api {
   openCollection(path: string): Promise<Collection>;
+  initCollection(path: string, name: string): Promise<Collection>;
   pickFolder(): Promise<string | null>;
   saveRequest(root: string, key: string, request: Request): Promise<void>;
   sendRequest(root: string, env: string | null, request: Request): Promise<Exchange>;
@@ -18,6 +19,7 @@ async function tauriApi(): Promise<Api> {
   const { open } = await import("@tauri-apps/plugin-dialog");
   return {
     openCollection: (path) => invoke<Collection>("open_collection", { path }),
+    initCollection: (path, name) => invoke<Collection>("init_collection", { path, name }),
     pickFolder: async () => {
       const r = await open({ directory: true, multiple: false, title: "Abrir colección" });
       return typeof r === "string" ? r : null;
@@ -72,6 +74,7 @@ function mockApi(): Api {
 
   return {
     openCollection: async () => structuredClone(col),
+    initCollection: async (path, name) => ({ ...structuredClone(col), root: path, meta: { ...col.meta, name } }),
     pickFolder: async () => col.root,
     saveRequest: async (_root, key, request) => {
       col.requests[key] = structuredClone(request);

@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { store } from "./store.svelte";
+  import { store, basename } from "./store.svelte";
+
+  let newName = $state("");
+  $effect(() => {
+    if (store.pendingInit) newName = basename(store.pendingInit);
+  });
 
   let filter = $state("");
 
@@ -80,7 +85,20 @@
     </div>
   </div>
 
-  {#if store.collection}
+  {#if store.pendingInit}
+    <div class="init fade-in">
+      <p><b>Sin colección</b></p>
+      <p class="muted small">No hay <code>harpoon.toml</code> en<br /><span class="mono">{store.pendingInit}</span></p>
+      <label class="muted small">Nombre de la colección
+        <input bind:value={newName} onkeydown={(e) => e.key === "Enter" && store.createHere(newName)} />
+      </label>
+      <div class="row">
+        <button class="btn primary" onclick={() => store.createHere(newName)}>Crear aquí</button>
+        <button class="btn" onclick={() => (store.pendingInit = null)}>Cancelar</button>
+      </div>
+      <p class="muted small">Se crearán <code>harpoon.toml</code>, <code>environments/dev.toml</code> y <code>requests/health.toml</code>.</p>
+    </div>
+  {:else if store.collection}
     <div class="collection">
       <div class="col-name">{store.collection.meta.name}</div>
       <div class="col-path muted" title={store.collection.root}>{store.collection.root}</div>
@@ -206,6 +224,36 @@
     height: 6px;
     border-radius: 50%;
     background: var(--warn);
+  }
+  .init {
+    padding: 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .init p {
+    margin: 0;
+  }
+  .init .small {
+    font-size: 11.5px;
+    word-break: break-all;
+  }
+  .init label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .init input {
+    font-size: 12px;
+  }
+  .init .row {
+    display: flex;
+    gap: 6px;
+  }
+  .init code {
+    font-family: var(--mono);
+    font-size: 11px;
   }
   .empty {
     padding: 24px 16px;
