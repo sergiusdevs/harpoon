@@ -6,7 +6,7 @@ members = ["crates/harpoon-core", "crates/harpoon-cli"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/sergiusdev/harpoon"
+repository = "https://github.com/sergiusdevs/harpoon"
 rust-version = "1.85"
 
 [workspace.dependencies]
