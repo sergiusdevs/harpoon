@@ -33,6 +33,12 @@ api_version = "v1"
 [auth]                          # auth por defecto de toda la colección
 type = "bearer"
 token = "{{token}}"
+
+[settings]                      # opcional; estos son los valores por defecto
+timeout_ms = 30000
+follow_redirects = true
+insecure = false                # true = no verificar TLS (solo desarrollo)
+# proxy = "http://127.0.0.1:8888"   # si falta, se respetan HTTP(S)_PROXY / NO_PROXY
 ```
 
 ## `environments/<nombre>.toml`
@@ -71,6 +77,12 @@ type = "json"
 json = '''
 { "name": "Ada", "email": "ada@example.com" }
 '''
+
+[expect]                        # aserciones declarativas; todas opcionales
+status = 201
+headers = { Content-Type = "application/json" }
+body_contains = ["\"id\""]
+max_time_ms = 500
 
 [scripts]                       # fase 3
 pre = "harpoon.vars.set('ts', Date.now())"

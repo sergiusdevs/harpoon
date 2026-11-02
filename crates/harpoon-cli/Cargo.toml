@@ -13,6 +13,11 @@ path = "src/main.rs"
 
 [dependencies]
 harpoon-core.workspace = true
+harpoon-http.workspace = true
+indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 

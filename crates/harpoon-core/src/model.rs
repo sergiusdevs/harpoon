@@ -109,6 +109,8 @@ pub struct Request {
     pub body: Body,
     #[serde(default)]
     pub scripts: Scripts,
+    #[serde(default, skip_serializing_if = "Expect::is_empty")]
+    pub expect: Expect,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub docs: String,
 }
@@ -125,6 +127,7 @@ impl Request {
             auth: Auth::Inherit,
             body: Body::None,
             scripts: Scripts::default(),
+            expect: Expect::default(),
             docs: String::new(),
         }
     }
@@ -155,8 +158,72 @@ pub struct CollectionMeta {
     pub vars: IndexMap<String, String>,
     #[serde(default)]
     pub auth: Auth,
+    #[serde(default)]
+    pub settings: Settings,
+}
+
+/// Ajustes de conexión de la colección (`[settings]` en `harpoon.toml`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Settings {
+    /// Tiempo máximo por solicitud, en milisegundos.
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// Seguir redirecciones (máximo 10).
+    #[serde(default = "default_true")]
+    pub follow_redirects: bool,
+    /// Proxy explícito (`http://host:puerto`). Si no se indica, se respetan
+    /// `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` del entorno.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy: Option<String>,
+    /// No verificar el certificado TLS del servidor (solo desarrollo).
+    #[serde(default)]
+    pub insecure: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            timeout_ms: default_timeout_ms(),
+            follow_redirects: true,
+            proxy: None,
+            insecure: false,
+        }
+    }
+}
+
+/// Aserciones declarativas sobre la respuesta (`[expect]` en una solicitud).
+/// Son la forma sin código de validar; los scripts de test llegan en la fase 3.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Expect {
+    /// Código de estado exacto.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<u16>,
+    /// Cabeceras que deben estar presentes con ese valor exacto.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub headers: IndexMap<String, String>,
+    /// Fragmentos que deben aparecer en el cuerpo.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub body_contains: Vec<String>,
+    /// Tiempo máximo de respuesta, en milisegundos.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_time_ms: Option<u64>,
+}
+
+impl Expect {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 fn default_format_version() -> u32 {
     1
+}
+
+fn default_timeout_ms() -> u64 {
+    30_000
+}
+
+fn default_true() -> bool {
+    true
 }

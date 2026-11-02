@@ -125,6 +125,7 @@ impl Collection {
             default_environment: Some("dev".into()),
             vars: IndexMap::new(),
             auth: crate::Auth::None,
+            settings: crate::Settings::default(),
         };
         write_toml(&root.join(META_FILE), &meta)?;
 
@@ -136,6 +137,7 @@ impl Collection {
         let mut req = Request::new("Health check", crate::Method::Get, "{{base_url}}/health");
         req.headers
             .insert("Accept".into(), "application/json".into());
+        req.expect.status = Some(200);
         req.docs = "Comprueba que el servicio responde.".into();
         write_toml(&root.join(REQUESTS_DIR).join("health.toml"), &req)?;
 

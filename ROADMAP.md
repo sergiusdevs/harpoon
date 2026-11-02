@@ -36,14 +36,16 @@ Harpoon recorta y reordena para ser **totalmente offline**:
 - Escritura del formato preservando comentarios y orden (`toml_edit`).
 - `harpoon validate` (valida la colección sin enviar nada).
 
-## Fase 2 — REST + CLI para CI
+## Fase 2 — REST + CLI para CI 🚧
+
+Hecho: `harpoon-http` (reqwest + rustls), auth Basic/Bearer/API key con herencia
+de colección, `[settings]` (timeout, redirecciones, proxy, insecure), `[expect]`,
+`harpoon send` y `harpoon run` con `--json`, `--bail` y códigos de salida.
 
 - `harpoon-http` sobre `reqwest` + `rustls` (sin OpenSSL del sistema).
-- Auth: Basic, Bearer, API key, Digest, OAuth2 (client credentials, password, refresh), OAuth 1.0.
-- Proxy, certificados de cliente (mTLS), CA propia, timeouts, redirecciones, cookies.
-- `harpoon send <request>` con salida legible y `--json`.
-- `harpoon run [carpeta]` ejecuta en orden con `--env`, `--iterations`, `--data csv/json`, `--bail`.
-- Reporters: terminal, JSON, JUnit XML, HTML estático. Códigos de salida para CI.
+- Pendiente de auth: Digest, OAuth2 (client credentials, password, refresh), OAuth 1.0.
+- Pendiente: certificados de cliente (mTLS), CA propia, `--data csv/json`, `--iterations`.
+- Reporters pendientes: JUnit XML, HTML estático.
 - Historial local de ejecuciones (`.harpoon/history/`, ignorado por Git).
 
 ## Fase 3 — Scripts y tests

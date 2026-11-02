@@ -8,3 +8,7 @@ status = "available"
 
 [headers]
 Accept = "application/json"
+
+[expect]
+status = 200
+headers = { Content-Type = "application/json" }
