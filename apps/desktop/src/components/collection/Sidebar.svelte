@@ -176,7 +176,8 @@
     if (!(e.metaKey || e.ctrlKey)) return;
     if (e.key === ",") { e.preventDefault(); store.modal = "themes"; return; }
     if (!store.collection) return;
-    if (e.key === "k") { e.preventDefault(); filterInput?.focus(); filterInput?.select(); }
+    if (e.shiftKey && e.key.toLowerCase() === "f" && !store.modal && !store.dialog) { e.preventDefault(); store.modal = "search"; }
+    else if (e.key === "k") { e.preventDefault(); filterInput?.focus(); filterInput?.select(); }
     else if (e.key === "n" && !e.shiftKey) { e.preventDefault(); store.newRequest(""); }
     else if (e.key === "n" && e.shiftKey) { e.preventDefault(); store.newFolder(""); }
     else if (e.key === "e") { e.preventDefault(); store.modal = "environments"; }
@@ -295,6 +296,7 @@
     </div>
     <div class="toolbar">
       <input bind:this={filterInput} placeholder="Filtrar  ⌘K" bind:value={filter} spellcheck="false" aria-label="Filtrar solicitudes" />
+      <button class="btn icon" title="Buscar en la colección (⇧⌘F)" aria-label="Buscar en la colección" onclick={() => (store.modal = "search")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></button>
       <button class="btn icon" title="Nueva solicitud (⌘N)" aria-label="Nueva solicitud" onclick={() => store.newRequest("")}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
       </button>

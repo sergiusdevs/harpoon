@@ -35,7 +35,7 @@ class Store {
   runtimeVariables = $state<Record<string, string>>({});
   /** Entrada del historial que se está viendo (null = respuesta en vivo). */
   viewingHistory = $state<HistoryEntry | null>(null);
-  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | null>(null);
+  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | "search" | null>(null);
   editingFolder = $state("");
   runFolder = $state("");
 
