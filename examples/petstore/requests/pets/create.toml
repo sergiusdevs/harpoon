@@ -12,9 +12,9 @@ json = '''
 '''
 
 [scripts]
-post = "arpon.vars.set('pet_id', arpon.res.json().id)"
+post = "harpoon.vars.set('pet_id', harpoon.res.json().id)"
 test = """
 test('crea la mascota', () => {
-  expect(arpon.res.status).to.equal(200);
+  expect(harpoon.res.status).to.equal(200);
 });
 """

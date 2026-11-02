@@ -137,12 +137,12 @@ pub struct Environment {
     pub vars: IndexMap<String, String>,
     /// Nombres de variables cuyo valor NO se guarda en el repo: se leen de
     /// `environments/<nombre>.secrets.toml` (ignorado por Git) o de variables
-    /// de entorno `ARPON_<NOMBRE>`.
+    /// de entorno `HARPOON_<NOMBRE>`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secrets: Vec<String>,
 }
 
-/// Metadatos de la colección (`arpon.toml`).
+/// Metadatos de la colección (`harpoon.toml`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionMeta {
     pub name: String,

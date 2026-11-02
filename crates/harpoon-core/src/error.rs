@@ -3,7 +3,7 @@ use std::path::PathBuf;
 /// Errores del núcleo.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("no se encontró `arpon.toml` en {0} ni en sus directorios padre")]
+    #[error("no se encontró `harpoon.toml` en {0} ni en sus directorios padre")]
     CollectionNotFound(PathBuf),
 
     #[error("error de E/S en {path}: {source}")]

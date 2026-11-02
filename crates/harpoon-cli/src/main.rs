@@ -1,17 +1,17 @@
-//! `arpon`: interfaz de línea de comandos.
+//! `harpoon`: interfaz de línea de comandos.
 //!
 //! Fase 0: `init` y `list`. `send`/`run` llegan en la fase 2.
 
 use std::path::PathBuf;
 
 use anyhow::Context;
-use arpon_core::Collection;
 use clap::{Parser, Subcommand};
+use harpoon_core::Collection;
 
 #[derive(Parser)]
-#[command(name = "arpon", version, about = "Cliente de APIs 100% offline")]
+#[command(name = "harpoon", version, about = "Cliente de APIs 100% offline")]
 struct Cli {
-    /// Directorio de la colección (por defecto: se busca `arpon.toml` hacia arriba).
+    /// Directorio de la colección (por defecto: se busca `harpoon.toml` hacia arriba).
     #[arg(short = 'C', long, global = true)]
     collection: Option<PathBuf>,
 
@@ -54,7 +54,7 @@ fn main() -> anyhow::Result<()> {
                 col.meta.name,
                 col.root.display()
             );
-            println!("Prueba: cd {} && arpon list", dir.display());
+            println!("Prueba: cd {} && harpoon list", dir.display());
         }
         Command::List { env } => {
             let col = open(cli.collection.as_deref())?;

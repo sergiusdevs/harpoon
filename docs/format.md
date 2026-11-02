@@ -4,7 +4,7 @@ Una colección es un directorio. Todo son archivos TOML, legibles y diffeables.
 
 ```
 mi-api/
-├── arpon.toml                  # metadatos, variables y auth de la colección
+├── harpoon.toml                  # metadatos, variables y auth de la colección
 ├── .gitignore                  # environments/*.secrets.toml
 ├── environments/
 │   ├── dev.toml
@@ -20,7 +20,7 @@ mi-api/
 
 El identificador de una solicitud es su ruta relativa sin extensión: `users/list`.
 
-## `arpon.toml`
+## `harpoon.toml`
 
 ```toml
 name = "Mi API"
@@ -45,7 +45,7 @@ base_url = "https://api.dev.example.com"
 ```
 
 `environments/<nombre>.secrets.toml` tiene la misma forma y **sobrescribe** `vars`.
-Alternativa sin archivo: variable de entorno `ARPON_TOKEN` (fase 1).
+Alternativa sin archivo: variable de entorno `HARPOON_TOKEN` (fase 1).
 
 ## `requests/**/<nombre>.toml`
 
@@ -73,11 +73,11 @@ json = '''
 '''
 
 [scripts]                       # fase 3
-pre = "arpon.vars.set('ts', Date.now())"
-post = "arpon.vars.set('user_id', arpon.res.json().id)"
+pre = "harpoon.vars.set('ts', Date.now())"
+post = "harpoon.vars.set('user_id', harpoon.res.json().id)"
 test = """
 test('crea el usuario', () => {
-  expect(arpon.res.status).to.equal(201);
+  expect(harpoon.res.status).to.equal(201);
 });
 """
 ```
@@ -92,5 +92,5 @@ test('crea el usuario', () => {
 
 ## Reglas de compatibilidad
 
-- `format` se incrementa solo en cambios incompatibles; `arpon` migra con `arpon migrate`.
+- `format` se incrementa solo en cambios incompatibles; `harpoon` migra con `harpoon migrate`.
 - Claves desconocidas se conservan al reescribir (fase 1, `toml_edit`).

@@ -1,4 +1,4 @@
-# Arpón
+# Harpoon
 
 Cliente de APIs **100 % offline**, escrito en Rust. Un arpón que lanzas a un endpoint.
 
@@ -16,28 +16,28 @@ Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
    y diffeable ([formato](docs/format.md)). Los secretos nunca entran en el repo.
 3. **Un binario.** Sin runtimes externos: el motor de scripts, el generador de docs
    y el servidor mock van embebidos.
-4. **CLI primero.** Todo lo que haga la interfaz lo puede hacer `arpon` desde la terminal.
+4. **CLI primero.** Todo lo que haga la interfaz lo puede hacer `harpoon` desde la terminal.
 
 ## Uso (fase 0)
 
 ```sh
-cargo install --path crates/arpon-cli
+cargo install --path crates/harpoon-cli
 
-arpon init mi-api          # crea arpon.toml, environments/dev.toml, requests/health.toml
+harpoon init mi-api          # crea harpoon.toml, environments/dev.toml, requests/health.toml
 cd mi-api
-arpon list                 # lista solicitudes con las URLs resueltas
-arpon list --env prod      # con otro entorno
+harpoon list                 # lista solicitudes con las URLs resueltas
+harpoon list --env prod      # con otro entorno
 ```
 
 ## Estructura del repositorio
 
 ```
 crates/
-  arpon-core/   modelo de datos, formato en disco, variables      (fase 1)
-  arpon-cli/    binario `arpon`                                   (fase 2)
-  arpon-http/   ejecución REST: auth, proxy, certificados         (fase 2)
-  arpon-script/ motor de scripts y aserciones                     (fase 3)
-  arpon-tui/    interfaz de terminal                              (fase 4)
+  harpoon-core/   modelo de datos, formato en disco, variables      (fase 1)
+  harpoon-cli/    binario `harpoon`                                   (fase 2)
+  harpoon-http/   ejecución REST: auth, proxy, certificados         (fase 2)
+  harpoon-script/ motor de scripts y aserciones                     (fase 3)
+  harpoon-tui/    interfaz de terminal                              (fase 4)
 docs/
   adr/          decisiones de arquitectura
   format.md     especificación del formato de colección

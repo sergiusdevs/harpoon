@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! mi-api/
-//! ├── arpon.toml                  # metadatos, variables y auth de la colección
+//! ├── harpoon.toml                  # metadatos, variables y auth de la colección
 //! ├── environments/
 //! │   ├── dev.toml                # variables del entorno
 //! │   └── dev.secrets.toml        # secretos (ignorado por Git)
@@ -26,7 +26,7 @@ use crate::{
     vars::Scope,
 };
 
-pub const META_FILE: &str = "arpon.toml";
+pub const META_FILE: &str = "harpoon.toml";
 pub const REQUESTS_DIR: &str = "requests";
 pub const ENVIRONMENTS_DIR: &str = "environments";
 
@@ -41,7 +41,7 @@ pub struct Collection {
 }
 
 impl Collection {
-    /// Busca `arpon.toml` desde `start` hacia arriba y carga la colección.
+    /// Busca `harpoon.toml` desde `start` hacia arriba y carga la colección.
     pub fn discover(start: &Path) -> Result<Self> {
         let mut dir = Some(start);
         while let Some(d) = dir {
@@ -143,7 +143,7 @@ impl Collection {
         if !gitignore.exists() {
             write_file(
                 &gitignore,
-                "# secretos locales de Arpón\nenvironments/*.secrets.toml\n",
+                "# secretos locales de Harpoon\nenvironments/*.secrets.toml\n",
             )?;
         }
 

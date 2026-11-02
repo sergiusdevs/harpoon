@@ -1,11 +1,11 @@
-//! `arpon-core`: el núcleo de Arpón.
+//! `harpoon-core`: el núcleo de Harpoon.
 //!
 //! Contiene el modelo de datos (colecciones, solicitudes, entornos), la
 //! lectura/escritura del formato de colección en disco (archivos TOML
 //! legibles y aptos para Git) y el motor de variables (`{{nombre}}`).
 //!
 //! Este crate no hace red ni ejecuta scripts: eso vive en crates separados
-//! (`arpon-http`, `arpon-script`) para que el núcleo sea pequeño, puro y
+//! (`harpoon-http`, `harpoon-script`) para que el núcleo sea pequeño, puro y
 //! fácil de probar.
 
 pub mod collection;

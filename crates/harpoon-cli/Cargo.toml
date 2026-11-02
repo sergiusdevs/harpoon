@@ -1,6 +1,6 @@
 [package]
-name = "arpon"
-description = "Arpón — cliente de APIs 100% offline, en Rust"
+name = "harpoon"
+description = "Harpoon — cliente de APIs 100% offline, en Rust"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,11 +8,11 @@ repository.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "arpon"
+name = "harpoon"
 path = "src/main.rs"
 
 [dependencies]
-arpon-core.workspace = true
+harpoon-core.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 

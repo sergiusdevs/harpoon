@@ -59,27 +59,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "arpon"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arpon-core",
- "clap",
-]
-
-[[package]]
-name = "arpon-core"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "serde",
- "tempfile",
- "thiserror",
- "toml",
- "walkdir",
-]
-
-[[package]]
 name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -168,6 +147,27 @@ dependencies = [
  "cfg-if",
  "libc",
  "r-efi",
+]
+
+[[package]]
+name = "harpoon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "harpoon-core",
+]
+
+[[package]]
+name = "harpoon-core"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "walkdir",
 ]
 
 [[package]]

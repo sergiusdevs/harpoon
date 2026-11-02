@@ -1,6 +1,6 @@
 [package]
-name = "arpon-core"
-description = "Modelo de datos, formato de colección y motor de variables de Arpón"
+name = "harpoon-core"
+description = "Modelo de datos, formato de colección y motor de variables de Harpoon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

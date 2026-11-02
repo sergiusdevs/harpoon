@@ -1,11 +1,11 @@
-# ADR-001: Arpón es 100 % offline
+# ADR-001: Harpoon es 100 % offline
 
 **Estado:** aceptado · **Fecha:** 2026-11-02
 
 ## Contexto
 
 Las herramientas de este tipo tienden a añadir nube, cuentas, telemetría e IA.
-Arpón nace para equipos que trabajan dentro de sus propios controles de red,
+Harpoon nace para equipos que trabajan dentro de sus propios controles de red,
 acceso y almacenamiento, y para quien no quiere depender de un proveedor.
 
 ## Decisión
