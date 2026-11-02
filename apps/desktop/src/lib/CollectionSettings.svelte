@@ -5,9 +5,10 @@
   import Modal from "./Modal.svelte";
   import AuthForm from "./AuthForm.svelte";
   import KeyValue from "./KeyValue.svelte";
+  import CodeEditor from "./CodeEditor.svelte";
 
   let meta = $state<CollectionMeta>(structuredClone($state.snapshot(store.collection!.meta)));
-  let tab = $state<"general" | "auth" | "vars" | "conn">("general");
+  let tab = $state<"general" | "auth" | "vars" | "scripts" | "conn">("general");
   let dirty = $state(false);
   const touch = () => (dirty = true);
 
@@ -23,6 +24,7 @@
     <button class="tab" class:active={tab === "general"} onclick={() => (tab = "general")}>General</button>
     <button class="tab" class:active={tab === "auth"} onclick={() => (tab = "auth")}>Auth</button>
     <button class="tab" class:active={tab === "vars"} onclick={() => (tab = "vars")}>Variables</button>
+    <button class="tab" class:active={tab === "scripts"} onclick={() => (tab = "scripts")}>Scripts</button>
     <button class="tab" class:active={tab === "conn"} onclick={() => (tab = "conn")}>Conexión</button>
   </div>
   <div class="content">
@@ -43,6 +45,16 @@
     {:else if tab === "vars"}
       <p class="muted hint">Variables comunes a todos los entornos (los entornos las pueden sobrescribir).</p>
       <KeyValue entries={meta.vars} onchange={(v) => { meta.vars = v; touch(); }} keyPlaceholder="variable" />
+    {:else if tab === "scripts"}
+      <p class="muted hint">Se ejecutan en todas las solicitudes, antes de los scripts propios de cada una.</p>
+      {#each [["pre", "Pre-request"], ["post", "Post-response"], ["test", "Tests"]] as [k, label]}
+        <div class="script">
+          <div class="muted lbl">{label}</div>
+          <div class="editor-wrap">
+            <CodeEditor value={meta.scripts[k as "pre" | "post" | "test"]} language="javascript" onchange={(v) => { meta.scripts = { ...meta.scripts, [k]: v }; touch(); }} />
+          </div>
+        </div>
+      {/each}
     {:else}
       <div class="form">
         <label><span>Timeout (ms)</span><input class="mono" type="number" bind:value={meta.settings.timeout_ms} oninput={touch} /></label>
@@ -104,5 +116,16 @@
   .hint {
     font-size: 12px;
     margin: 0 0 8px;
+  }
+  .script {
+    margin-bottom: 10px;
+  }
+  .editor-wrap {
+    height: 110px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bg-raised);
+    margin-top: 4px;
   }
 </style>

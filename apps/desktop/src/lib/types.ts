@@ -49,6 +49,7 @@ export interface CollectionMeta {
   vars: Record<string, string>;
   auth: Auth;
   settings: { timeout_ms: number; follow_redirects: boolean; proxy?: string; insecure: boolean };
+  scripts: Scripts;
 }
 
 export interface Environment {
@@ -86,6 +87,9 @@ export interface Exchange {
     size: number;
   };
   assertions: Outcome[];
+  tests: Outcome[];
+  logs: string[];
+  vars: Record<string, string>;
   passed: boolean;
 }
 
@@ -132,6 +136,7 @@ export function normalizeCollection(c: Collection): Collection {
     vars: c.meta.vars ?? {},
     auth: c.meta.auth ?? { type: "none" },
     settings: Object.assign({ timeout_ms: 30000, follow_redirects: true, insecure: false }, c.meta.settings ?? {}),
+    scripts: Object.assign({ pre: "", post: "", test: "" }, c.meta.scripts ?? {}),
   };
   return { ...c, meta, environments, requests };
 }

@@ -29,6 +29,14 @@ use crate::{
 pub const META_FILE: &str = "harpoon.toml";
 pub const REQUESTS_DIR: &str = "requests";
 pub const ENVIRONMENTS_DIR: &str = "environments";
+/// Estado local (no versionado): variables de ejecución, historial.
+pub const STATE_DIR: &str = ".harpoon";
+
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct RuntimeVarsFile {
+    #[serde(default)]
+    vars: IndexMap<String, String>,
+}
 
 /// Una colección cargada en memoria.
 #[derive(Debug, Clone)]
@@ -126,6 +134,7 @@ impl Collection {
             vars: IndexMap::new(),
             auth: crate::Auth::None,
             settings: crate::Settings::default(),
+            scripts: crate::model::Scripts::default(),
         };
         write_toml(&root.join(META_FILE), &meta)?;
 
@@ -145,7 +154,7 @@ impl Collection {
         if !gitignore.exists() {
             write_file(
                 &gitignore,
-                "# secretos locales de Harpoon\nenvironments/*.secrets.toml\n",
+                "# secretos y estado local de Harpoon\nenvironments/*.secrets.toml\n.harpoon/\n",
             )?;
         }
 
@@ -294,6 +303,24 @@ impl Collection {
         write_toml(&self.root.join(META_FILE), &meta)?;
         self.meta = meta;
         Ok(())
+    }
+
+    /// Variables de ejecución (las que fijan los scripts con `harpoon.vars.set`).
+    /// Viven en `.harpoon/vars.toml`, fuera de Git, y sobreviven entre ejecuciones.
+    #[must_use]
+    pub fn load_runtime_vars(&self) -> IndexMap<String, String> {
+        let path = self.root.join(STATE_DIR).join("vars.toml");
+        if !path.is_file() {
+            return IndexMap::new();
+        }
+        read_toml::<RuntimeVarsFile>(&path)
+            .map(|f| f.vars)
+            .unwrap_or_default()
+    }
+
+    pub fn save_runtime_vars(&self, vars: &IndexMap<String, String>) -> Result<()> {
+        let path = self.root.join(STATE_DIR).join("vars.toml");
+        write_toml(&path, &RuntimeVarsFile { vars: vars.clone() })
     }
 
     fn request_path(&self, key: &str) -> PathBuf {

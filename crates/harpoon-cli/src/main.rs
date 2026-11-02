@@ -93,7 +93,9 @@ async fn run() -> anyhow::Result<ExitCode> {
         }
         Command::List => {
             let col = open(cli.collection.as_deref())?;
-            let scope = col.scope(cli.env.as_deref())?;
+            let scope = col
+                .scope(cli.env.as_deref())?
+                .with_layer(col.load_runtime_vars());
             output::list(&col, &scope);
             Ok(ExitCode::SUCCESS)
         }
@@ -103,24 +105,23 @@ async fn run() -> anyhow::Result<ExitCode> {
             json,
         } => {
             let col = open(cli.collection.as_deref())?;
-            let scope = col.scope(cli.env.as_deref())?;
             let req = col
                 .requests
                 .get(&request)
                 .with_context(|| format!("no existe la solicitud `{request}`"))?;
             let client = Client::new(&col.meta.settings)?;
-            let (prepared, response, outcomes) =
-                harpoon_http::execute(&client, &col, req, &scope).await?;
+            let exec =
+                harpoon_script::runner::execute_persistent(&client, &col, req, cli.env.as_deref())
+                    .await?;
             if json {
-                output::send_json(&request, &prepared, &response, &outcomes)?;
+                output::send_json(&request, &exec)?;
             } else {
-                output::send_human(&prepared, &response, &outcomes, verbose);
+                output::send_human(&exec, verbose);
             }
-            Ok(exit_for(outcomes.iter().all(|o| o.passed)))
+            Ok(exit_for(exec.passed))
         }
         Command::Run { prefix, bail, json } => {
             let col = open(cli.collection.as_deref())?;
-            let scope = col.scope(cli.env.as_deref())?;
             let client = Client::new(&col.meta.settings)?;
             let selected: Vec<(&String, &harpoon_core::Request)> = col
                 .requests
@@ -137,10 +138,22 @@ async fn run() -> anyhow::Result<ExitCode> {
             );
 
             let mut report = output::Report::new(&col.meta.name, cli.env.as_deref());
+            // Las variables de ejecución fluyen de una solicitud a la siguiente
+            // y se persisten al final.
+            let mut vars = col.load_runtime_vars();
             for (key, req) in selected {
-                let item = match harpoon_http::execute(&client, &col, req, &scope).await {
-                    Ok((prepared, response, outcomes)) => {
-                        output::RunItem::done(key, &prepared, &response, outcomes)
+                let item = match harpoon_script::execute(
+                    &client,
+                    &col,
+                    req,
+                    cli.env.as_deref(),
+                    vars.clone(),
+                )
+                .await
+                {
+                    Ok(exec) => {
+                        vars.clone_from(&exec.vars);
+                        output::RunItem::done(key, &exec)
                     }
                     Err(err) => output::RunItem::failed(key, &err.to_string()),
                 };
@@ -154,6 +167,7 @@ async fn run() -> anyhow::Result<ExitCode> {
                 }
             }
             let all_ok = report.all_passed();
+            col.save_runtime_vars(&vars)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {

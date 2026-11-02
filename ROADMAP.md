@@ -48,9 +48,17 @@ de colección, `[settings]` (timeout, redirecciones, proxy, insecure), `[expect]
 - Reporters pendientes: JUnit XML, HTML estático.
 - Historial local de ejecuciones (`.harpoon/history/`, ignorado por Git).
 
-## Fase 3 — Scripts y tests
+## Fase 3 — Scripts y tests ✅
 
-- Motor de scripts embebido (❓ ver arriba) con API `harpoon.req`, `harpoon.res`,
+Hecho: `harpoon-script` con QuickJS (`rquickjs`), límites de memoria/tiempo,
+sin E/S; `pre`/`post`/`test` en solicitud y colección; `expect` estilo Chai;
+variables de ejecución persistentes en `.harpoon/vars.toml`; integrado en CLI y
+app (pestañas Scripts/Tests, Consola). Pendiente: scripts por carpeta
+(`folder.toml`), que llega con la herencia por carpeta de la fase 1.
+
+Diseño original:
+
+- Motor de scripts embebido (QuickJS) con API `harpoon.req`, `harpoon.res`,
   `harpoon.vars`, `harpoon.env`, `test(name, fn)`, `expect(x).to...` estilo Chai.
 - Scripts `pre`/`post`/`test` en solicitud, carpeta y colección; orden de ejecución documentado.
 - Sandbox: sin acceso a red ni a disco desde scripts, salvo lo que exponga la API.

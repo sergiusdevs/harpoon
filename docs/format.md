@@ -5,7 +5,8 @@ Una colección es un directorio. Todo son archivos TOML, legibles y diffeables.
 ```
 mi-api/
 ├── harpoon.toml                  # metadatos, variables y auth de la colección
-├── .gitignore                  # environments/*.secrets.toml
+├── .gitignore                  # environments/*.secrets.toml, .harpoon/
+├── .harpoon/vars.toml          # variables de ejecución (NO se versiona)
 ├── environments/
 │   ├── dev.toml
 │   ├── dev.secrets.toml        # NO se versiona; se fusiona sobre dev.toml
@@ -33,6 +34,9 @@ api_version = "v1"
 [auth]                          # auth por defecto de toda la colección
 type = "bearer"
 token = "{{token}}"
+
+[scripts]                       # opcional: se ejecutan en todas las solicitudes
+test = 'test("json", () => expect(harpoon.res.header("content-type")).to.include("json"));'
 
 [settings]                      # opcional; estos son los valores por defecto
 timeout_ms = 30000
@@ -84,7 +88,7 @@ headers = { Content-Type = "application/json" }
 body_contains = ["\"id\""]
 max_time_ms = 500
 
-[scripts]                       # fase 3
+[scripts]                       # ver docs/scripting.md
 pre = "harpoon.vars.set('ts', Date.now())"
 post = "harpoon.vars.set('user_id', harpoon.res.json().id)"
 test = """
@@ -97,7 +101,7 @@ test('crea el usuario', () => {
 ## Variables
 
 - Sintaxis: `{{nombre}}` (espacios internos permitidos: `{{ nombre }}`).
-- Prioridad, de mayor a menor: scripts en tiempo de ejecución → entorno → carpeta (fase 1) → colección.
+- Prioridad, de mayor a menor: variables de ejecución (`harpoon.vars`) → entorno → carpeta (fase 1) → colección.
 - Una variable sin definir es un **error**, no una cadena vacía.
 - `{{` sin cerrar se deja literal.
 - Fase 1: funciones dinámicas `{{$uuid}}`, `{{$timestamp}}`, `{{$randomInt 1 100}}`.

@@ -5,12 +5,13 @@
   import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
   import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
   import { json } from "@codemirror/lang-json";
+  import { javascript } from "@codemirror/lang-javascript";
   import { foldGutter, syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
   import { tags } from "@lezer/highlight";
 
   interface Props {
     value: string;
-    language?: "json" | "text";
+    language?: "json" | "text" | "javascript";
     readonly?: boolean;
     onchange?: (value: string) => void;
     placeholder?: string;
@@ -30,9 +31,14 @@
     { tag: tags.propertyName, class: "tok-propertyName" },
     { tag: tags.punctuation, class: "tok-punctuation" },
     { tag: tags.invalid, class: "tok-invalid" },
+    { tag: tags.keyword, class: "tok-keyword" },
+    { tag: tags.comment, class: "tok-comment" },
+    { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], class: "tok-fn" },
+    { tag: tags.variableName, class: "tok-var" },
+    { tag: tags.operator, class: "tok-op" },
   ]);
 
-  const langExt = (l: string) => (l === "json" ? [json(), foldGutter()] : []);
+  const langExt = (l: string) => (l === "json" ? [json(), foldGutter()] : l === "javascript" ? [javascript(), foldGutter()] : []);
 
   onMount(() => {
     view = new EditorView({

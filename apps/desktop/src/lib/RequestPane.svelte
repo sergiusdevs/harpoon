@@ -5,7 +5,7 @@
   import KeyValue from "./KeyValue.svelte";
   import AuthForm from "./AuthForm.svelte";
 
-  type Tab = "params" | "headers" | "body" | "auth" | "expect" | "docs";
+  type Tab = "params" | "headers" | "body" | "auth" | "expect" | "scripts" | "tests" | "docs";
   let tab = $state<Tab>("params");
 
   const req = $derived(store.draft);
@@ -76,6 +76,8 @@
       <button class="tab" class:active={tab === "body"} onclick={() => (tab = "body")}>Body {#if bodyKind !== "none"}<span class="count">{bodyKind}</span>{/if}</button>
       <button class="tab" class:active={tab === "auth"} onclick={() => (tab = "auth")}>Auth {#if req.auth.type !== "inherit"}<span class="count">{req.auth.type}</span>{/if}</button>
       <button class="tab" class:active={tab === "expect"} onclick={() => (tab = "expect")}>Expect</button>
+      <button class="tab" class:active={tab === "scripts"} onclick={() => (tab = "scripts")}>Scripts {#if req.scripts.pre || req.scripts.post}<span class="count">js</span>{/if}</button>
+      <button class="tab" class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if req.scripts.test}<span class="count">js</span>{/if}</button>
       <button class="tab" class:active={tab === "docs"} onclick={() => (tab = "docs")}>Docs</button>
     </div>
 
@@ -114,6 +116,24 @@
           <label><span>El cuerpo contiene</span><input class="mono" value={req.expect.body_contains.join(" | ")} oninput={(e) => set("expect", { ...req.expect, body_contains: e.currentTarget.value.split("|").map((s) => s.trim()).filter(Boolean) })} placeholder={'"id" | "name"  (separar con |)'} /></label>
           <div class="sub">Cabeceras esperadas</div>
           <KeyValue entries={req.expect.headers} onchange={(headers) => set("expect", { ...req.expect, headers })} keyPlaceholder="Cabecera" />
+        </div>
+      {:else if tab === "scripts"}
+        <div class="scripts">
+          <div class="script">
+            <div class="script-head"><span>Pre-request</span><span class="muted">se ejecuta antes de enviar · <code>harpoon.req</code>, <code>harpoon.vars</code></span></div>
+            <div class="editor-wrap"><CodeEditor value={req.scripts.pre} language="javascript" onchange={(v) => set("scripts", { ...req.scripts, pre: v })} /></div>
+          </div>
+          <div class="script">
+            <div class="script-head"><span>Post-response</span><span class="muted">después de recibir · <code>harpoon.res.json()</code>, <code>harpoon.vars.set()</code></span></div>
+            <div class="editor-wrap"><CodeEditor value={req.scripts.post} language="javascript" onchange={(v) => set("scripts", { ...req.scripts, post: v })} /></div>
+          </div>
+        </div>
+      {:else if tab === "tests"}
+        <div class="scripts">
+          <div class="script grow">
+            <div class="script-head"><span>Tests</span><span class="muted"><code>test("nombre", () =&gt; expect(x).to.equal(y))</code></span></div>
+            <div class="editor-wrap"><CodeEditor value={req.scripts.test} language="javascript" onchange={(v) => set("scripts", { ...req.scripts, test: v })} placeholder="test('status 200', () => expect(harpoon.res.status).to.equal(200));" /></div>
+          </div>
         </div>
       {:else if tab === "docs"}
         <div class="editor-wrap">
@@ -202,6 +222,35 @@
     border-radius: var(--radius);
     overflow: hidden;
     background: var(--bg-raised);
+  }
+  .scripts {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100%;
+  }
+  .script {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-height: 120px;
+  }
+  .script.grow {
+    flex: 1;
+  }
+  .script-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 12px;
+  }
+  .script-head .muted {
+    font-size: 11px;
+  }
+  .script-head code {
+    font-family: var(--mono);
+    font-size: 10.5px;
   }
   .form {
     display: flex;

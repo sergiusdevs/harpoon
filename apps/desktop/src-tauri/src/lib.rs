@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use harpoon_core::{Collection, Environment, Request, model::CollectionMeta};
 use harpoon_http::{Client, Outcome, Prepared};
+use harpoon_script::TestResult;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +48,9 @@ struct ExchangeDto {
     sent: Prepared,
     response: ResponseDto,
     assertions: Vec<Outcome>,
+    tests: Vec<TestResult>,
+    logs: Vec<String>,
+    vars: IndexMap<String, String>,
     passed: bool,
 }
 
@@ -171,14 +175,17 @@ fn list_folders(root: PathBuf) -> Result<Vec<String>, String> {
 #[tauri::command]
 async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
     let col = load(&args.root)?;
-    let scope = col.scope(args.env.as_deref()).map_err(|e| e.to_string())?;
     let client = Client::new(&col.meta.settings).map_err(|e| e.to_string())?;
-    let (sent, res, assertions) = harpoon_http::execute(&client, &col, &args.request, &scope)
-        .await
-        .map_err(|e| e.to_string())?;
-    let passed = assertions.iter().all(|o| o.passed);
+    let exec = harpoon_script::runner::execute_persistent(
+        &client,
+        &col,
+        &args.request,
+        args.env.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let res = &exec.response;
     Ok(ExchangeDto {
-        sent,
         response: ResponseDto {
             status: res.status,
             is_json: res.is_json(),
@@ -187,9 +194,26 @@ async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
             elapsed_ms: res.elapsed_ms,
             size: res.size,
         },
-        assertions,
-        passed,
+        sent: exec.prepared,
+        assertions: exec.assertions,
+        tests: exec.tests,
+        logs: exec.logs,
+        vars: exec.vars,
+        passed: exec.passed,
     })
+}
+
+/// Variables de ejecución actuales (`.harpoon/vars.toml`).
+#[tauri::command]
+fn runtime_vars(root: PathBuf) -> Result<IndexMap<String, String>, String> {
+    Ok(load(&root)?.load_runtime_vars())
+}
+
+#[tauri::command]
+fn save_runtime_vars(root: PathBuf, vars: IndexMap<String, String>) -> Result<(), String> {
+    load(&root)?
+        .save_runtime_vars(&vars)
+        .map_err(|e| e.to_string())
 }
 
 /// Punto de entrada de Tauri.
@@ -213,6 +237,8 @@ pub fn run() {
             delete_environment,
             save_meta,
             list_folders,
+            runtime_vars,
+            save_runtime_vars,
             send_request
         ])
         .run(tauri::generate_context!())

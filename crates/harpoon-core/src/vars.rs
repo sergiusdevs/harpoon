@@ -43,6 +43,18 @@ impl Scope {
             .find_map(|l| l.get(key).map(String::as_str))
     }
 
+    /// Todas las variables visibles, ya resueltas por prioridad.
+    #[must_use]
+    pub fn flatten(&self) -> IndexMap<String, String> {
+        let mut out = IndexMap::new();
+        for layer in &self.layers {
+            for (k, v) in layer {
+                out.insert(k.clone(), v.clone());
+            }
+        }
+        out
+    }
+
     /// Sustituye cada `{{nombre}}` por su valor. Falla si falta alguna.
     pub fn interpolate(&self, input: &str) -> Result<String> {
         let mut out = String::with_capacity(input.len());

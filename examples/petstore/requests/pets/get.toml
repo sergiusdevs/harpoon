@@ -1,0 +1,10 @@
+name = "Ver mascota"
+method = "GET"
+url = "{{base_url}}/{{api_version}}/pet/{{pet_id}}"
+docs = "Usa `pet_id`, que fija el script post de `pets/create`."
+
+[expect]
+status = 200
+
+[scripts]
+test = 'test("misma mascota", () => expect(harpoon.res.json().id).to.equal(Number(harpoon.vars.get("pet_id"))));'

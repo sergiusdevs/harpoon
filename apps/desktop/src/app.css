@@ -344,6 +344,31 @@ input {
 .tok-invalid {
   color: var(--err);
 }
+.tok-keyword {
+  color: #bb9af7;
+}
+.tok-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.tok-fn {
+  color: #7aa2f7;
+}
+.tok-var {
+  color: var(--text);
+}
+.tok-op {
+  color: #89ddff;
+}
+:root[data-theme="light"] .tok-keyword {
+  color: #7c3aed;
+}
+:root[data-theme="light"] .tok-fn {
+  color: #1d4ed8;
+}
+:root[data-theme="light"] .tok-op {
+  color: #0e7490;
+}
 
 :root[data-theme="light"] .tok-string {
   color: #2e7d32;

@@ -19,6 +19,8 @@ export interface Api {
   deleteEnvironment(root: string, name: string): Promise<Collection>;
   saveMeta(root: string, meta: CollectionMeta): Promise<Collection>;
   sendRequest(root: string, env: string | null, request: Request): Promise<Exchange>;
+  runtimeVars(root: string): Promise<Record<string, string>>;
+  saveRuntimeVars(root: string, vars: Record<string, string>): Promise<void>;
 }
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -47,6 +49,8 @@ async function tauriApi(): Promise<Api> {
     saveMeta: (root, meta) => col("save_meta", { root, meta }),
     sendRequest: (root, env, request) =>
       invoke<Exchange>("send_request", { args: { root, env, request } }),
+    runtimeVars: (root) => invoke<Record<string, string>>("runtime_vars", { root }),
+    saveRuntimeVars: (root, vars) => invoke("save_runtime_vars", { root, vars }),
   };
 }
 
@@ -60,6 +64,7 @@ function mockApi(): Api {
       vars: { api_version: "v2" },
       auth: { type: "api_key", key: "api_key", value: "{{api_key}}", in: "header" },
       settings: { timeout_ms: 30000, follow_redirects: true, insecure: false },
+      scripts: { pre: "", post: "", test: "test('responde JSON', () => expect(harpoon.res.header('content-type')).to.include('json'));" },
     },
     environments: {
       dev: { vars: { base_url: "http://localhost:8080", api_key: "dev-key-no-secreta" }, secrets: ["api_key"] },
@@ -80,6 +85,11 @@ function mockApi(): Api {
         headers: { "Content-Type": "application/json" },
         body: { type: "json", json: '{\n  "name": "Firulais",\n  "status": "available"\n}' },
         expect: { status: 201, headers: {}, body_contains: ['"id"'], max_time_ms: 500 },
+        scripts: {
+          pre: 'harpoon.req.headers["X-Request-Id"] = "req-" + Date.now();',
+          post: 'harpoon.vars.set("pet_id", harpoon.res.json().id);\nconsole.log("pet_id =", harpoon.vars.get("pet_id"));',
+          test: 'test("devuelve id numérico", () => expect(harpoon.res.json().id).to.be.a("number"));\ntest("eco del nombre", () => expect(harpoon.res.json().name).to.equal("Firulais"));\ntest("rápido", () => expect(harpoon.res.elapsed_ms).to.be.below(50));',
+        },
       },
       "pets/update": { ...emptyRequest("Actualizar mascota", "PUT"), url: "{{base_url}}/{{api_version}}/pet/{{pet_id}}" },
       "pets/delete": { ...emptyRequest("Borrar mascota", "DELETE"), url: "{{base_url}}/{{api_version}}/pet/{{pet_id}}" },
@@ -93,6 +103,7 @@ function mockApi(): Api {
     },
   };
   const folders = new Set<string>(["pets", "store", "user", "admin"]);
+  let runtime: Record<string, string> = { token: "demo-token" };
   const snapshot = async () => structuredClone(col);
   const vars: Record<string, string> = { base_url: "http://localhost:8080", api_version: "v2", pet_id: "42" };
   const interp = (s: string) => s.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
@@ -180,6 +191,19 @@ function mockApi(): Api {
         assertions.push({ name: `body contains ${JSON.stringify(f)}`, passed: text.includes(f), detail: text.includes(f) ? undefined : "no aparece en el cuerpo" });
       if (request.expect.max_time_ms !== undefined)
         assertions.push({ name: `time <= ${request.expect.max_time_ms}ms`, passed: elapsed <= request.expect.max_time_ms });
+      // Simulación de scripts: en la app real los ejecuta QuickJS en Rust.
+      const tests = [];
+      const logs: string[] = [];
+      if (col.meta.scripts.test) tests.push({ name: "responde JSON", passed: true });
+      if (request.scripts.post.includes("pet_id")) {
+        runtime = { ...runtime, pet_id: String((body as { id?: number }).id ?? 42) };
+        logs.push(`pet_id = ${runtime.pet_id}`);
+      }
+      if (request.scripts.test) {
+        tests.push({ name: "devuelve id numérico", passed: true });
+        tests.push({ name: "eco del nombre", passed: true });
+        tests.push({ name: "rápido", passed: elapsed < 50, detail: elapsed < 50 ? undefined : `esperaba < 50, recibido ${elapsed}` });
+      }
       return {
         sent: { method: request.method, url, headers: { ...request.headers, api_key: "dev-key" }, query: request.query, body: request.body.type === "json" ? request.body.json : undefined },
         response: {
@@ -191,8 +215,15 @@ function mockApi(): Api {
           size: text.length,
         },
         assertions,
-        passed: assertions.every((a) => a.passed),
+        tests,
+        logs,
+        vars: { ...runtime },
+        passed: assertions.every((a) => a.passed) && tests.every((t) => t.passed),
       };
+    },
+    runtimeVars: async () => ({ ...runtime }),
+    saveRuntimeVars: async (_r, vars) => {
+      runtime = { ...vars };
     },
   };
 }

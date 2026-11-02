@@ -6,7 +6,7 @@ Las colecciones viven como archivos TOML junto a tu código, se versionan con Gi
 y la misma colección sirve para el trabajo manual (TUI/escritorio), la terminal y CI/CD.
 Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
 
-> Estado: **fase 2 en curso** (REST + CLI). Ver [ROADMAP.md](ROADMAP.md).
+> Estado: **fase 3** (scripts y tests) hecha; escritorio en marcha. Ver [ROADMAP.md](ROADMAP.md).
 
 ## Principios
 
@@ -33,7 +33,17 @@ harpoon run users --env prod   # solo la carpeta users/, con otro entorno
 harpoon run --bail --json      # para CI: se detiene al primer fallo, informe JSON
 ```
 
-Códigos de salida: `0` todo correcto, `1` alguna aserción falló, `2` error de uso o de red.
+Códigos de salida: `0` todo correcto, `1` alguna aserción o test falló, `2` error de uso o de red.
+
+Scripts JavaScript embebidos (sin Node) antes y después de cada solicitud, con
+tests estilo Chai y variables que persisten entre solicitudes: ver
+[docs/scripting.md](docs/scripting.md).
+
+```toml
+[scripts]
+post = 'harpoon.vars.set("token", harpoon.res.json().token);'
+test = 'test("200", () => expect(harpoon.res.status).to.equal(200));'
+```
 
 Aserciones sin código, en cada solicitud:
 
@@ -52,11 +62,12 @@ crates/
   harpoon-core/   modelo de datos, formato en disco, variables
   harpoon-http/   ejecución REST: auth, timeouts, proxy, aserciones [expect]
   harpoon-cli/    binario `harpoon`: init, list, send, run
-  harpoon-script/ motor de scripts y tests                          (fase 3)
+  harpoon-script/ motor JS embebido (QuickJS), tests y pipeline de ejecución
   harpoon-tui/    interfaz de terminal                              (fase 4)
 docs/
   adr/          decisiones de arquitectura
   format.md     especificación del formato de colección
+  scripting.md  API de scripts y tests
 examples/
   petstore/     colección de ejemplo
 ```

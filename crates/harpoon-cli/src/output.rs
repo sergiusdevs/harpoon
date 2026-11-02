@@ -2,6 +2,7 @@
 
 use harpoon_core::{Collection, Scope};
 use harpoon_http::{Outcome, Prepared, Response};
+use harpoon_script::{Execution, TestResult};
 use serde::Serialize;
 
 pub fn list(col: &Collection, scope: &Scope) {
@@ -23,7 +24,8 @@ pub fn list(col: &Collection, scope: &Scope) {
     }
 }
 
-pub fn send_human(prepared: &Prepared, res: &Response, outcomes: &[Outcome], verbose: bool) {
+pub fn send_human(x: &Execution, verbose: bool) {
+    let (prepared, res) = (&x.prepared, &x.response);
     if verbose {
         println!(
             "> {} {}{}",
@@ -52,29 +54,29 @@ pub fn send_human(prepared: &Prepared, res: &Response, outcomes: &[Outcome], ver
     }
     println!();
     print_body(res);
-    print_outcomes(outcomes);
+    print_checks(&x.assertions, &x.tests);
+    print_logs(&x.logs);
 }
 
-pub fn send_json(
-    key: &str,
-    prepared: &Prepared,
-    res: &Response,
-    outcomes: &[Outcome],
-) -> anyhow::Result<()> {
+pub fn send_json(key: &str, x: &Execution) -> anyhow::Result<()> {
     #[derive(Serialize)]
     struct Out<'a> {
         request: &'a str,
         sent: &'a Prepared,
         response: ResponseJson<'a>,
         assertions: &'a [Outcome],
+        tests: &'a [TestResult],
+        logs: &'a [String],
         passed: bool,
     }
     let out = Out {
         request: key,
-        sent: prepared,
-        response: ResponseJson::from(res),
-        assertions: outcomes,
-        passed: outcomes.iter().all(|o| o.passed),
+        sent: &x.prepared,
+        response: ResponseJson::from(&x.response),
+        assertions: &x.assertions,
+        tests: &x.tests,
+        logs: &x.logs,
+        passed: x.passed,
     };
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
@@ -147,28 +149,32 @@ pub struct RunItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     assertions: Vec<Outcome>,
+    tests: Vec<TestResult>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    logs: Vec<String>,
     #[serde(skip)]
     pub(crate) line: String,
 }
 
 impl RunItem {
-    pub fn done(key: &str, prepared: &Prepared, res: &Response, assertions: Vec<Outcome>) -> Self {
-        let passed = assertions.iter().all(|o| o.passed);
+    pub fn done(key: &str, x: &Execution) -> Self {
         let line = format!(
             "{} {key:<24} {} {} → {} ({} ms)",
-            mark(passed),
-            prepared.method,
-            prepared.url,
-            res.status,
-            res.elapsed_ms
+            mark(x.passed),
+            x.prepared.method,
+            x.prepared.url,
+            x.response.status,
+            x.response.elapsed_ms
         );
         Self {
             request: key.into(),
-            passed,
-            status: Some(res.status),
-            elapsed_ms: Some(res.elapsed_ms),
+            passed: x.passed,
+            status: Some(x.response.status),
+            elapsed_ms: Some(x.response.elapsed_ms),
             error: None,
-            assertions,
+            assertions: x.assertions.clone(),
+            tests: x.tests.clone(),
+            logs: x.logs.clone(),
             line,
         }
     }
@@ -181,13 +187,12 @@ impl RunItem {
             elapsed_ms: None,
             error: Some(error.into()),
             assertions: Vec::new(),
+            tests: Vec::new(),
+            logs: Vec::new(),
             line: format!("{} {key:<24} {error}", mark(false)),
         }
     }
-}
 
-// Accesor usado por main para `--bail`.
-impl RunItem {
     pub const fn passed(&self) -> bool {
         self.passed
     }
@@ -197,7 +202,22 @@ pub fn run_progress(item: &RunItem) {
     println!("{}", item.line);
     for o in &item.assertions {
         if !o.passed {
-            println!("    {} {}{}", mark(false), o.name, detail(o));
+            println!(
+                "    {} {}{}",
+                mark(false),
+                o.name,
+                detail(o.detail.as_deref())
+            );
+        }
+    }
+    for t in &item.tests {
+        if !t.passed {
+            println!(
+                "    {} {}{}",
+                mark(false),
+                t.name,
+                detail(t.detail.as_deref())
+            );
         }
     }
 }
@@ -205,11 +225,28 @@ pub fn run_progress(item: &RunItem) {
 pub fn run_summary(report: &Report<'_>) {
     println!();
     let ok = report.total - report.failed;
+    let tests: usize = report
+        .items
+        .iter()
+        .map(|i| i.assertions.len() + i.tests.len())
+        .sum();
+    let failed_tests: usize = report
+        .items
+        .iter()
+        .map(|i| {
+            i.assertions.iter().filter(|o| !o.passed).count()
+                + i.tests.iter().filter(|t| !t.passed).count()
+        })
+        .sum();
     if report.failed == 0 {
-        println!("{} {ok}/{} solicitudes correctas", mark(true), report.total);
+        println!(
+            "{} {ok}/{} solicitudes correctas · {tests} comprobaciones",
+            mark(true),
+            report.total
+        );
     } else {
         println!(
-            "{} {}/{} solicitudes fallidas",
+            "{} {}/{} solicitudes fallidas · {failed_tests}/{tests} comprobaciones fallidas",
             mark(false),
             report.failed,
             report.total
@@ -229,20 +266,41 @@ fn print_body(res: &Response) {
     }
 }
 
-fn print_outcomes(outcomes: &[Outcome]) {
-    if outcomes.is_empty() {
+fn print_checks(outcomes: &[Outcome], tests: &[TestResult]) {
+    if outcomes.is_empty() && tests.is_empty() {
         return;
     }
     println!();
     for o in outcomes {
-        println!("{} {}{}", mark(o.passed), o.name, detail(o));
+        println!(
+            "{} {}{}",
+            mark(o.passed),
+            o.name,
+            detail(o.detail.as_deref())
+        );
+    }
+    for t in tests {
+        println!(
+            "{} {}{}",
+            mark(t.passed),
+            t.name,
+            detail(t.detail.as_deref())
+        );
     }
 }
 
-fn detail(o: &Outcome) -> String {
-    o.detail
-        .as_ref()
-        .map_or_else(String::new, |d| format!(" — {d}"))
+fn print_logs(logs: &[String]) {
+    if logs.is_empty() {
+        return;
+    }
+    println!();
+    for l in logs {
+        println!("  · {l}");
+    }
+}
+
+fn detail(d: Option<&str>) -> String {
+    d.map_or_else(String::new, |d| format!(" — {d}"))
 }
 
 fn mark(ok: bool) -> &'static str {

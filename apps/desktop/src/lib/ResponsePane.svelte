@@ -2,7 +2,7 @@
   import { store, fmtSize } from "./store.svelte";
   import CodeEditor from "./CodeEditor.svelte";
 
-  type Tab = "body" | "headers" | "tests" | "sent";
+  type Tab = "body" | "headers" | "tests" | "console" | "sent";
   let tab = $state<Tab>("body");
 
   const x = $derived(store.exchange);
@@ -16,7 +16,8 @@
       return x.response.body;
     }
   });
-  const failed = $derived(x ? x.assertions.filter((a) => !a.passed).length : 0);
+  const checks = $derived(x ? [...x.assertions, ...x.tests] : []);
+  const failed = $derived(checks.filter((a) => !a.passed).length);
 </script>
 
 <section class="pane">
@@ -35,16 +36,17 @@
       <span class="status {statusClass(x.response.status)}">{x.response.status}</span>
       <span class="meta"><b>{x.response.elapsed_ms}</b> ms</span>
       <span class="meta"><b>{fmtSize(x.response.size)}</b></span>
-      {#if x.assertions.length}
+      {#if checks.length}
         <span class="meta tests" class:bad={failed > 0}>
-          {#if failed}✗ {failed}/{x.assertions.length} tests{:else}✓ {x.assertions.length} tests{/if}
+          {#if failed}✗ {failed}/{checks.length} tests{:else}✓ {checks.length} tests{/if}
         </span>
       {/if}
     </div>
     <div class="tabs">
       <button class="tab" class:active={tab === "body"} onclick={() => (tab = "body")}>Respuesta</button>
       <button class="tab" class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers <span class="count">{Object.keys(x.response.headers).length}</span></button>
-      <button class="tab" class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if x.assertions.length}<span class="count" class:bad={failed > 0}>{x.assertions.length}</span>{/if}</button>
+      <button class="tab" class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if checks.length}<span class="count" class:bad={failed > 0}>{checks.length}</span>{/if}</button>
+      <button class="tab" class:active={tab === "console"} onclick={() => (tab = "console")}>Consola {#if x.logs.length}<span class="count">{x.logs.length}</span>{/if}</button>
       <button class="tab" class:active={tab === "sent"} onclick={() => (tab = "sent")}>Enviado</button>
     </div>
     <div class="content">
@@ -59,9 +61,10 @@
           </tbody>
         </table>
       {:else if tab === "tests"}
-        {#if x.assertions.length === 0}
-          <p class="muted pad">Esta solicitud no define aserciones. Añádelas en la pestaña <b>Expect</b>.</p>
+        {#if checks.length === 0}
+          <p class="muted pad">Sin comprobaciones. Añade aserciones en <b>Expect</b> o scripts en <b>Tests</b>.</p>
         {:else}
+          {#if x.assertions.length}<div class="group muted">EXPECT</div>{/if}
           <ul class="tests-list">
             {#each x.assertions as a}
               <li class:pass={a.passed} class:fail={!a.passed}>
@@ -71,6 +74,22 @@
               </li>
             {/each}
           </ul>
+          {#if x.tests.length}<div class="group muted">SCRIPTS</div>{/if}
+          <ul class="tests-list">
+            {#each x.tests as a}
+              <li class:pass={a.passed} class:fail={!a.passed}>
+                <span class="mark">{a.passed ? "✓" : "✗"}</span>
+                <span>{a.name}</span>
+                {#if a.detail}<span class="detail muted mono">— {a.detail}</span>{/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      {:else if tab === "console"}
+        {#if x.logs.length === 0}
+          <p class="muted pad">Nada en la consola. Usa <code class="mono">console.log()</code> en los scripts.</p>
+        {:else}
+          <pre class="console mono">{x.logs.join("\n")}</pre>
         {/if}
       {:else}
         <div class="sent">
@@ -173,6 +192,18 @@
   }
   .hdrs .v {
     word-break: break-all;
+  }
+  .group {
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    padding: 10px 14px 0;
+  }
+  .console {
+    margin: 0;
+    padding: 10px 14px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    user-select: text;
   }
   .tests-list {
     list-style: none;

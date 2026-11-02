@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 harpoon-core.workspace = true
 harpoon-http.workspace = true
+harpoon-script.workspace = true
 indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

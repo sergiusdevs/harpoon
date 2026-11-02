@@ -92,6 +92,13 @@ pub struct Scripts {
     pub test: String,
 }
 
+impl Scripts {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.pre.is_empty() && self.post.is_empty() && self.test.is_empty()
+    }
+}
+
 /// Una solicitud, tal y como se guarda en `requests/**/*.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
@@ -160,6 +167,9 @@ pub struct CollectionMeta {
     pub auth: Auth,
     #[serde(default)]
     pub settings: Settings,
+    /// Scripts a nivel de colección: se ejecutan antes de los de cada solicitud.
+    #[serde(default, skip_serializing_if = "Scripts::is_empty")]
+    pub scripts: Scripts,
 }
 
 /// Ajustes de conexión de la colección (`[settings]` en `harpoon.toml`).
