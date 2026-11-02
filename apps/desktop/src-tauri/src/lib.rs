@@ -8,6 +8,7 @@
 mod mock;
 mod sse;
 mod stream;
+mod ws_transport;
 
 use std::path::{Path, PathBuf};
 

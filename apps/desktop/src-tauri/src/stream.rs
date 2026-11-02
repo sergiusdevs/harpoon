@@ -81,17 +81,6 @@ pub async fn start_stream(
     {
         return Err("La URL debe usar ws/wss para WebSocket o http/https para SSE".into());
     }
-    if is_ws
-        && (collection.meta.settings.proxy.is_some()
-            || collection.meta.settings.insecure
-            || collection.meta.settings.ca_cert.is_some()
-            || collection.meta.settings.client_cert.is_some()
-            || collection.meta.settings.client_key.is_some())
-    {
-        return Err(
-            "WebSocket aún no admite proxy ni ajustes TLS personalizados de la colección".into(),
-        );
-    }
     let (sender, receiver) = mpsc::channel(32);
     {
         let mut sessions = state.0.lock().map_err(|_| "No se pudo abrir la conexión")?;
@@ -208,8 +197,8 @@ async fn websocket(
     let config = WebSocketConfig::default()
         .max_message_size(Some(MAX_MESSAGE))
         .max_frame_size(Some(MAX_MESSAGE));
-    let (mut socket, _) = tokio::select! {
-        result = tokio_tungstenite::connect_async_with_config(request, Some(config), false) => result.map_err(|e| e.to_string())?,
+    let mut socket = tokio::select! {
+        result = crate::ws_transport::connect(collection, &url, request, config) => result.map_err(|e| e.to_string())?,
         _ = actions.recv() => return Ok(()),
     };
     emit(channel, "open", "Conectado", "", "");
