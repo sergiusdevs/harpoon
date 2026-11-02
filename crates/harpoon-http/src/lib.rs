@@ -459,6 +459,15 @@ impl Client {
         }
     }
 
+    /// Valor de `Authorization` para `OAuth2` con la caché de tokens del cliente.
+    /// Con `refresh`, descarta el token guardado y solicita uno nuevo.
+    pub async fn oauth2_header(&self, cfg: &auth::OAuth2Config, refresh: bool) -> Result<String> {
+        if refresh {
+            self.tokens.invalidate(&auth::oauth2_cache_key(cfg));
+        }
+        auth::oauth2_authorization(&self.inner, &self.tokens, cfg, refresh).await
+    }
+
     async fn send_sse(
         &self,
         prepared: &Prepared,

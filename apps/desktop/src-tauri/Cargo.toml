@@ -35,5 +35,8 @@ rustls-pemfile = "2"
 webpki-roots = "1"
 hyper-util = { version = "0.1", features = ["client-proxy"] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true

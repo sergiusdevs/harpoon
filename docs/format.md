@@ -214,11 +214,13 @@ operation_name = "GetUser"
 ## WebSocket y SSE
 
 El botón **Tiempo real** abre una conexión usando la URL, parámetros,
-cabeceras, variables y autenticación compatible de la solicitud actual.
+cabeceras, variables y autenticación de la solicitud actual.
 WebSocket permite enviar y recibir texto; los mensajes binarios se indican por
 su tamaño. SSE muestra eventos e identificadores y se reconecta automáticamente.
 Los scripts no se ejecutan en estas conexiones. WebSocket admite proxy HTTP/HTTPS
-mediante CONNECT y los ajustes TLS de la colección; todavía no admite OAuth2 ni Digest.
+mediante CONNECT y los ajustes TLS de la colección. Con OAuth2, el token se añade
+al handshake y, si el servidor responde 401, se renueva y se reintenta una vez;
+con Digest, el handshake responde al reto `WWW-Authenticate` del servidor.
 SSE usa los ajustes HTTP de la colección y tiene un límite de conexión de 24 horas.
 La vista conserva hasta 200 mensajes, con contenido largo recortado visualmente.
 
