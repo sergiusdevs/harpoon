@@ -20,8 +20,8 @@ harpoon-http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 indexmap.workspace = true
-tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2"
 
 [lints]
