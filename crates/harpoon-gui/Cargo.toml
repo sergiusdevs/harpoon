@@ -1,0 +1,22 @@
+[package]
+name = "harpoon-gui"
+description = "Harpoon — interfaz de escritorio (iced)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "harpoon-gui"
+path = "src/main.rs"
+
+[dependencies]
+harpoon-core.workspace = true
+harpoon-http.workspace = true
+iced.workspace = true
+indexmap.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

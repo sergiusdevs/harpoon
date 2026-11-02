@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/harpoon-core", "crates/harpoon-cli", "crates/harpoon-http"]
+members = ["crates/harpoon-core", "crates/harpoon-cli", "crates/harpoon-http", "crates/harpoon-gui"]
 
 [workspace.package]
 version = "0.1.0"
@@ -23,6 +23,7 @@ indexmap = { version = "2", features = ["serde"] }
 serde_json = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "query", "gzip", "http2", "cookies"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+iced = { version = "0.14", features = ["tokio"] }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

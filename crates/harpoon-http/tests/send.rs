@@ -43,7 +43,7 @@ fn spawn_server() -> String {
             } else {
                 let hdrs: Vec<String> = headers
                     .iter()
-                    .map(|(k, v)| format!("{:?}:{:?}", k, v))
+                    .map(|(k, v)| format!("{k:?}:{v:?}"))
                     .collect();
                 (
                     "200".into(),

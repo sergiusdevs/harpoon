@@ -152,6 +152,14 @@ impl Collection {
         Self::load(root)
     }
 
+    /// Guarda una solicitud en disco (`requests/<key>.toml`) y en memoria.
+    pub fn save_request(&mut self, key: &str, request: Request) -> Result<()> {
+        let path = self.root.join(REQUESTS_DIR).join(format!("{key}.toml"));
+        write_toml(&path, &request)?;
+        self.requests.insert(key.to_owned(), request);
+        Ok(())
+    }
+
     /// Construye el ámbito de variables para un entorno (o el predeterminado).
     pub fn scope(&self, environment: Option<&str>) -> Result<Scope> {
         let mut scope = Scope::new().with_layer(self.meta.vars.clone());
