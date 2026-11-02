@@ -8,7 +8,7 @@ export { folderChain } from "../domain/paths";
 import { emptyRequest, normalizeCollection } from "../domain/types";
 
 export interface SharePreview { name: string; warnings: string[] }
-export interface StreamEvent { kind: "open" | "closed" | "error" | "message" | "sent"; data: string; event: string; id: string }
+export interface StreamEvent { kind: "open" | "closed" | "error" | "message" | "sent" | "reconnecting"; data: string; event: string; id: string }
 export interface MockRoute { enabled: boolean; method: import("../domain/types").Method; path: string; status: number; headers: Record<string, string>; body: string }
 export interface MockConfig { routes: MockRoute[] }
 export interface MockStatus { root: string; address: string }

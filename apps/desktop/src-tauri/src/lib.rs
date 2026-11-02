@@ -6,6 +6,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 mod mock;
+mod sse;
 mod stream;
 
 use std::path::{Path, PathBuf};

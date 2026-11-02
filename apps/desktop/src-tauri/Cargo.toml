@@ -29,7 +29,6 @@ tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3.34", features = ["sink"] }
 tokio = { workspace = true, features = ["sync", "net"] }
 url = "2"
-eventsource-stream = "0.2.3"
 
 [lints]
 workspace = true

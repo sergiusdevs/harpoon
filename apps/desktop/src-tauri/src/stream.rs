@@ -1,5 +1,4 @@
 //! Sesiones efímeras WebSocket y SSE de la aplicación de escritorio.
-use eventsource_stream::Eventsource;
 use futures_util::{SinkExt, StreamExt};
 use harpoon_core::{Body, Method, Request};
 use harpoon_http::{Client, Prepared};
@@ -68,14 +67,14 @@ pub async fn start_stream(
         .with_layer(collection.load_runtime_vars());
     let prepared =
         harpoon_http::prepare(&collection, &request, &scope).map_err(|e| e.to_string())?;
-    if prepared.pending_auth.is_some() {
-        return Err("Las conexiones en tiempo real todavía no admiten OAuth2 ni Digest".into());
-    }
     let is_ws = match protocol.as_str() {
         "websocket" => true,
         "sse" => false,
         _ => return Err("Protocolo no válido".into()),
     };
+    if is_ws && prepared.pending_auth.is_some() {
+        return Err("WebSocket todavía no admite OAuth2 ni Digest".into());
+    }
     let parsed = url::Url::parse(&prepared.url).map_err(|e| e.to_string())?;
     if (is_ws && !matches!(parsed.scheme(), "ws" | "wss"))
         || (!is_ws && !matches!(parsed.scheme(), "http" | "https"))
@@ -222,35 +221,79 @@ async fn websocket(
     }
     Ok(())
 }
+#[allow(clippy::if_not_else)]
 async fn sse(
     collection: &harpoon_core::Collection,
     prepared: &Prepared,
     channel: &Channel<StreamEvent>,
     mut actions: mpsc::Receiver<Action>,
 ) -> Result<(), String> {
+    use std::time::Duration;
     let client = Client::for_collection(collection).map_err(|e| e.to_string())?;
-    let response = tokio::select! { response = client.open_sse(prepared) => response.map_err(|e| e.to_string())?, _ = actions.recv() => return Ok(()) };
-    if !response.status().is_success() {
-        return Err(format!("El servidor respondió HTTP {}", response.status()));
-    }
-    let content_type = response
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if !content_type
-        .to_ascii_lowercase()
-        .starts_with("text/event-stream")
-    {
-        return Err(format!("Content-Type SSE no válido: {content_type}"));
-    }
-    emit(channel, "open", "Conectado", "", "");
-    let mut events = response.bytes_stream().eventsource();
+    let mut last_id: Option<String> = None;
+    let mut retry = Duration::from_secs(3);
     loop {
-        tokio::select! {
-            _ = actions.recv() => break,
-            event = events.next() => match event { Some(Ok(event)) => { if event.data.len() > MAX_MESSAGE { return Err("Evento demasiado grande (máximo 1 MB)".into()); } emit(channel, "message", event.data, event.event, event.id); }, Some(Err(error)) => return Err(error.to_string()), None => break }
+        let response = tokio::select! {
+            response = client.open_sse(prepared, last_id.as_deref()) => response,
+            _ = actions.recv() => return Ok(()),
+        };
+        match response {
+            Ok(response) => {
+                if response.status().as_u16() == 204 {
+                    return Ok(());
+                }
+                if response.status().is_client_error() && response.status().as_u16() != 429 {
+                    return Err(format!("El servidor respondió HTTP {}", response.status()));
+                }
+                if !response.status().is_success() {
+                    emit(
+                        channel,
+                        "reconnecting",
+                        format!("HTTP {}. Reintentando…", response.status()),
+                        "",
+                        "",
+                    );
+                } else {
+                    let content_type = response
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    if !content_type
+                        .split(';')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .eq_ignore_ascii_case("text/event-stream")
+                    {
+                        return Err(format!("Content-Type SSE no válido: {content_type}"));
+                    }
+                    emit(channel, "open", "Conectado", "", "");
+                    let mut decoder = crate::sse::Decoder::new(last_id.take(), retry);
+                    let mut stream = response.bytes_stream();
+                    loop {
+                        tokio::select! {
+                            _ = actions.recv() => return Ok(()),
+                            chunk = stream.next() => match chunk {
+                                Some(Ok(chunk)) => for event in decoder.feed(&chunk)? { emit(channel, "message", event.data, event.kind, event.id); },
+                                Some(Err(error)) => { emit(channel, "reconnecting", format!("{error}. Reintentando…"), "", ""); break; },
+                                None => { emit(channel, "reconnecting", "Conexión cerrada. Reintentando…", "", ""); break; },
+                            }
+                        }
+                    }
+                    last_id = decoder.last_id;
+                    retry = decoder.retry;
+                }
+            }
+            Err(harpoon_http::Error::Network(error)) => emit(
+                channel,
+                "reconnecting",
+                format!("{error}. Reintentando…"),
+                "",
+                "",
+            ),
+            Err(error) => return Err(error.to_string()),
         }
+        tokio::select! { _ = actions.recv() => return Ok(()), () = tokio::time::sleep(retry) => {} }
     }
-    Ok(())
 }

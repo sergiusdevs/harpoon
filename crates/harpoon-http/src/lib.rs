@@ -411,12 +411,60 @@ pub struct Client {
 
 impl Client {
     /// Abre un flujo SSE sin aplicar el límite de tiempo habitual a toda la conexión.
-    pub async fn open_sse(&self, prepared: &Prepared) -> Result<reqwest::Response> {
-        if prepared.pending_auth.is_some() {
-            return Err(Error::Stream(
-                "SSE todavía no admite OAuth2 ni Digest".into(),
-            ));
+    pub async fn open_sse(
+        &self,
+        prepared: &Prepared,
+        last_event_id: Option<&str>,
+    ) -> Result<reqwest::Response> {
+        match &prepared.pending_auth {
+            None => self.send_sse(prepared, last_event_id, None).await,
+            Some(auth::Pending::OAuth2(cfg)) => {
+                let header =
+                    auth::oauth2_authorization(&self.inner, &self.tokens, cfg, false).await?;
+                let first = self
+                    .send_sse(prepared, last_event_id, Some(&header))
+                    .await?;
+                if first.status() != reqwest::StatusCode::UNAUTHORIZED {
+                    return Ok(first);
+                }
+                self.tokens.invalidate(&auth::oauth2_cache_key(cfg));
+                let refreshed =
+                    auth::oauth2_authorization(&self.inner, &self.tokens, cfg, true).await?;
+                self.send_sse(prepared, last_event_id, Some(&refreshed))
+                    .await
+            }
+            Some(auth::Pending::Digest { username, password }) => {
+                let first = self.send_sse(prepared, last_event_id, None).await?;
+                if first.status() != reqwest::StatusCode::UNAUTHORIZED {
+                    return Ok(first);
+                }
+                let Some(challenge) = first
+                    .headers()
+                    .get(reqwest::header::WWW_AUTHENTICATE)
+                    .and_then(|v| v.to_str().ok())
+                else {
+                    return Ok(first);
+                };
+                let Some(header) = auth::digest_authorization(
+                    challenge,
+                    "GET",
+                    &auth::request_uri(&full_url(prepared)),
+                    username,
+                    password,
+                ) else {
+                    return Ok(first);
+                };
+                self.send_sse(prepared, last_event_id, Some(&header)).await
+            }
         }
+    }
+
+    async fn send_sse(
+        &self,
+        prepared: &Prepared,
+        last_event_id: Option<&str>,
+        authorization: Option<&str>,
+    ) -> Result<reqwest::Response> {
         let mut request = self
             .inner
             .get(&prepared.url)
@@ -424,6 +472,11 @@ impl Client {
             .query(&prepared.query.iter().collect::<Vec<_>>());
         let mut has_accept = false;
         for (name, value) in &prepared.headers {
+            if (last_event_id.is_some() && name.eq_ignore_ascii_case("last-event-id"))
+                || (authorization.is_some() && name.eq_ignore_ascii_case("authorization"))
+            {
+                continue;
+            }
             has_accept |= name.eq_ignore_ascii_case("accept");
             request = request.header(
                 reqwest::header::HeaderName::from_bytes(name.as_bytes())
@@ -434,6 +487,12 @@ impl Client {
         }
         if !has_accept {
             request = request.header("Accept", "text/event-stream");
+        }
+        if let Some(id) = last_event_id.filter(|id| !id.is_empty()) {
+            request = request.header("Last-Event-ID", id);
+        }
+        if let Some(value) = authorization {
+            request = request.header(reqwest::header::AUTHORIZATION, value);
         }
         request.send().await.map_err(Error::Network)
     }

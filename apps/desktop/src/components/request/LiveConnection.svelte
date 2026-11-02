@@ -11,12 +11,14 @@
   let session = $state<string | null>(null);
   let message = $state("");
   let error = $state("");
+  let notice = $state("");
   let entries = $state<Entry[]>([]);
   let nextKey = 0;
   let disposed = false;
   function append(event: StreamEvent) {
     if (disposed) return;
-    if (event.kind === "open") connectionState = "open";
+    if (event.kind === "open") { connectionState = "open"; notice = ""; }
+    if (event.kind === "reconnecting") { connectionState = "connecting"; notice = event.data; }
     if (event.kind === "error") error = event.data;
     if (event.kind === "closed") { connectionState = "closed"; session = null; }
     if (event.kind === "message" || event.kind === "sent") {
@@ -30,7 +32,7 @@
     const request = structuredClone($state.snapshot(store.draft));
     request.url = url;
     const id = crypto.randomUUID();
-    session = id; connectionState = "connecting"; error = ""; entries = [];
+    session = id; connectionState = "connecting"; error = ""; notice = ""; entries = [];
     try {
       await (await api).startStream(root, key, env, request, protocol, id, append);
       if (disposed) await (await api).stopStream(id);
@@ -46,7 +48,8 @@
 <Modal title="Tiempo real" width={820} onclose={() => (store.modal = null)}>
   <div class="top"><div class="segmented" role="radiogroup" aria-label="Protocolo"><button role="radio" aria-checked={protocol === "websocket"} class:active={protocol === "websocket"} disabled={connectionState !== "closed"} onclick={() => (protocol = "websocket")}>WebSocket</button><button role="radio" aria-checked={protocol === "sse"} class:active={protocol === "sse"} disabled={connectionState !== "closed"} onclick={() => (protocol = "sse")}>SSE</button></div><span class="status" class:connected={connectionState === "open"}>{connectionState === "open" ? "Conectado" : connectionState === "connecting" ? "Conectando…" : "Desconectado"}</span></div>
   <div class="address"><input bind:value={url} aria-label="URL de conexión" class="mono" placeholder={protocol === "websocket" ? "wss://ejemplo.com/socket" : "https://ejemplo.com/eventos"} disabled={connectionState !== "closed"} spellcheck="false" />{#if connectionState === "closed"}<button class="btn primary" onclick={connect} disabled={!url.trim() || isMock}>Conectar</button>{:else}<button class="btn" onclick={disconnect}>Desconectar</button>{/if}</div>
-  <p class="muted hint">Usa los parámetros, cabeceras, variables y autenticación compatible de la solicitud actual. No ejecuta scripts. OAuth2 y Digest aún no están disponibles para estas conexiones.{protocol === "websocket" ? " WebSocket no admite proxy ni TLS personalizado por ahora." : " SSE no se reconecta automáticamente."}</p>
+  <p class="muted hint">Usa los parámetros, cabeceras, variables y autenticación compatible de la solicitud actual. No ejecuta scripts.{protocol === "websocket" ? " WebSocket aún no admite OAuth2, Digest, proxy ni TLS personalizado." : " SSE se reconecta automáticamente si la conexión se interrumpe."}</p>
+  {#if notice}<p class="muted hint" aria-live="polite">{notice}</p>{/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="messages" aria-live="polite">
     {#if !entries.length}<p class="muted empty">Los mensajes aparecerán aquí.</p>{/if}
