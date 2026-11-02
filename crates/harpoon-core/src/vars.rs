@@ -68,15 +68,78 @@ impl Scope {
                 return Ok(out);
             };
             let name = after[..end].trim();
-            let value = self
-                .get(name)
-                .ok_or_else(|| Error::UndefinedVariable(name.to_owned()))?;
-            out.push_str(value);
+            if let Some(dynamic) = dynamic_value(name) {
+                out.push_str(&dynamic);
+            } else {
+                let value = self
+                    .get(name)
+                    .ok_or_else(|| Error::UndefinedVariable(name.to_owned()))?;
+                out.push_str(value);
+            }
             rest = &after[end + 2..];
         }
         out.push_str(rest);
         Ok(out)
     }
+}
+
+/// Variables dinámicas: `{{$uuid}}`, `{{$timestamp}}`, `{{$isoTimestamp}}`,
+/// `{{$randomInt}}` / `{{$randomInt 1 100}}`, `{{$randomHex 16}}`.
+fn dynamic_value(name: &str) -> Option<String> {
+    let name = name.strip_prefix('$')?;
+    let mut parts = name.split_whitespace();
+    let func = parts.next()?;
+    let args: Vec<&str> = parts.collect();
+    match func {
+        "uuid" | "guid" => Some(uuid::Uuid::new_v4().to_string()),
+        "timestamp" => Some(unix_time().to_string()),
+        "isoTimestamp" => Some(iso_now()),
+        "randomInt" => {
+            let lo: i64 = args.first().and_then(|a| a.parse().ok()).unwrap_or(0);
+            let hi: i64 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(1000);
+            let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
+            let span = u64::try_from(hi - lo).unwrap_or(0) + 1;
+            let r = u64::from_le_bytes(uuid::Uuid::new_v4().as_bytes()[..8].try_into().ok()?);
+            Some((lo + i64::try_from(r % span).unwrap_or(0)).to_string())
+        }
+        "randomHex" => {
+            let n: usize = args.first().and_then(|a| a.parse().ok()).unwrap_or(16);
+            let mut s = String::new();
+            while s.len() < n {
+                s.push_str(&uuid::Uuid::new_v4().simple().to_string());
+            }
+            s.truncate(n);
+            Some(s)
+        }
+        _ => None,
+    }
+}
+
+fn unix_time() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// `YYYY-MM-DDTHH:MM:SSZ` sin dependencias de calendario.
+#[allow(clippy::many_single_char_names)]
+fn iso_now() -> String {
+    let secs = unix_time();
+    let days = secs / 86_400;
+    let rem = secs % 86_400;
+    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    // Algoritmo de días civiles (Howard Hinnant).
+    let z = i64::try_from(days).unwrap_or(0) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if mo <= 2 { y + 1 } else { y };
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
 #[cfg(test)]
@@ -108,6 +171,30 @@ mod tests {
             scope.interpolate("{{nope}}"),
             Err(Error::UndefinedVariable(n)) if n == "nope"
         ));
+    }
+
+    #[test]
+    fn variables_dinamicas() {
+        let scope = Scope::new();
+        let u = scope.interpolate("{{$uuid}}").unwrap();
+        assert_eq!(u.len(), 36);
+        let n: i64 = scope
+            .interpolate("{{$randomInt 5 7}}")
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!((5..=7).contains(&n));
+        assert_eq!(scope.interpolate("{{$randomHex 8}}").unwrap().len(), 8);
+        let ts: u64 = scope
+            .interpolate("{{$timestamp}}")
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(ts > 1_700_000_000);
+        let iso = scope.interpolate("{{$isoTimestamp}}").unwrap();
+        assert!(iso.ends_with('Z') && iso.len() == 20, "{iso}");
+        // Una variable `$desconocida` sigue siendo un error.
+        assert!(scope.interpolate("{{$nope}}").is_err());
     }
 
     #[test]

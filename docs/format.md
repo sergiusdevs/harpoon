@@ -42,6 +42,7 @@ test = 'test("json", () => expect(harpoon.res.header("content-type")).to.include
 timeout_ms = 30000
 follow_redirects = true
 insecure = false                # true = no verificar TLS (solo desarrollo)
+# ca_cert = "certs/ca.pem"           # CA adicional; client_cert / client_key para mTLS
 # proxy = "http://127.0.0.1:8888"   # si falta, se respetan HTTP(S)_PROXY / NO_PROXY
 ```
 
@@ -73,7 +74,7 @@ Content-Type = "application/json"
 [query]
 notify = "true"
 
-[auth]                          # inherit (por defecto) | none | basic | bearer | api_key
+[auth]                          # inherit (por defecto) | none | basic | bearer | api_key | digest | oauth2 (ver docs/auth.md)
 type = "inherit"
 
 [body]                          # none | json | text | form
@@ -104,7 +105,7 @@ test('crea el usuario', () => {
 - Prioridad, de mayor a menor: variables de ejecución (`harpoon.vars`) → entorno → carpeta (fase 1) → colección.
 - Una variable sin definir es un **error**, no una cadena vacía.
 - `{{` sin cerrar se deja literal.
-- Fase 1: funciones dinámicas `{{$uuid}}`, `{{$timestamp}}`, `{{$randomInt 1 100}}`.
+- Funciones dinámicas: `{{$uuid}}`, `{{$timestamp}}`, `{{$isoTimestamp}}`, `{{$randomInt 1 100}}`, `{{$randomHex 16}}`.
 
 ## Reglas de compatibilidad
 

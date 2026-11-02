@@ -61,6 +61,10 @@
         <label><span>Seguir redirecciones</span><input type="checkbox" bind:checked={meta.settings.follow_redirects} onchange={touch} /></label>
         <label><span>Proxy</span><input class="mono" value={meta.settings.proxy ?? ""} oninput={(e) => { meta.settings.proxy = e.currentTarget.value || undefined; touch(); }} placeholder="http://127.0.0.1:8888 (vacío = HTTP_PROXY del sistema)" /></label>
         <label><span>Ignorar TLS inválido</span><input type="checkbox" bind:checked={meta.settings.insecure} onchange={touch} /></label>
+        <div class="sub">Certificados (rutas relativas a la colección, formato PEM)</div>
+        <label><span>CA adicional</span><input class="mono" value={meta.settings.ca_cert ?? ""} oninput={(e) => { meta.settings.ca_cert = e.currentTarget.value || undefined; touch(); }} placeholder="certs/ca.pem" /></label>
+        <label><span>Certificado de cliente</span><input class="mono" value={meta.settings.client_cert ?? ""} oninput={(e) => { meta.settings.client_cert = e.currentTarget.value || undefined; touch(); }} placeholder="certs/client.pem (mTLS)" /></label>
+        <label><span>Clave privada</span><input class="mono" value={meta.settings.client_key ?? ""} oninput={(e) => { meta.settings.client_key = e.currentTarget.value || undefined; touch(); }} placeholder="certs/client-key.pem (si no va en el .pem anterior)" /></label>
       </div>
     {/if}
   </div>
@@ -116,6 +120,13 @@
   .hint {
     font-size: 12px;
     margin: 0 0 8px;
+  }
+  .sub {
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 8px;
   }
   .script {
     margin-bottom: 10px;

@@ -14,8 +14,10 @@ use indexmap::IndexMap;
 use serde::Serialize;
 
 pub mod assert;
+pub mod auth;
 
 pub use assert::{Assertion, Outcome};
+pub use auth::TokenCache;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -35,6 +37,10 @@ pub enum Error {
     Network(reqwest::Error),
     #[error("tiempo agotado tras {0:?}")]
     Timeout(Duration),
+    #[error("OAuth2: {0}")]
+    OAuth2(String),
+    #[error("no se pudo leer el certificado {path}: {reason}")]
+    Certificate { path: String, reason: String },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -49,6 +55,9 @@ pub struct Prepared {
     pub query: IndexMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+    /// Auth que se resuelve al enviar (`OAuth2`, Digest).
+    #[serde(skip)]
+    pub pending_auth: Option<auth::Pending>,
 }
 
 /// Respuesta recibida.
@@ -90,6 +99,7 @@ impl Response {
 }
 
 /// Resuelve variables y auth de una solicitud dentro de su colección.
+#[allow(clippy::too_many_lines)]
 pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Result<Prepared> {
     let url = scope.interpolate(&request.url)?;
     let mut headers = IndexMap::new();
@@ -105,6 +115,7 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
         Auth::Inherit => &collection.meta.auth,
         other => other,
     };
+    let mut pending_auth = None;
     match auth {
         Auth::Inherit | Auth::None => {}
         Auth::Basic { username, password } => {
@@ -130,6 +141,43 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
                 ApiKeyLocation::Header => headers.insert(k, v),
                 ApiKeyLocation::Query => query.insert(k, v),
             };
+        }
+        Auth::Digest { username, password } => {
+            pending_auth = Some(auth::Pending::Digest {
+                username: scope.interpolate(username)?,
+                password: scope.interpolate(password)?,
+            });
+        }
+        Auth::OAuth2 {
+            grant,
+            token_url,
+            client_id,
+            client_secret,
+            scope: oscope,
+            username,
+            password,
+            refresh_token,
+            client_auth,
+            extra,
+            header_prefix,
+        } => {
+            let mut extra_resolved = IndexMap::new();
+            for (k, v) in extra {
+                extra_resolved.insert(k.clone(), scope.interpolate(v)?);
+            }
+            pending_auth = Some(auth::Pending::OAuth2(auth::OAuth2Config {
+                grant: *grant,
+                token_url: scope.interpolate(token_url)?,
+                client_id: scope.interpolate(client_id)?,
+                client_secret: scope.interpolate(client_secret)?,
+                scope: scope.interpolate(oscope)?,
+                username: scope.interpolate(username)?,
+                password: scope.interpolate(password)?,
+                refresh_token: scope.interpolate(refresh_token)?,
+                client_auth: *client_auth,
+                extra: extra_resolved,
+                header_prefix: header_prefix.clone(),
+            }));
         }
     }
 
@@ -166,6 +214,7 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
         headers,
         query,
         body,
+        pending_auth,
     })
 }
 
@@ -173,11 +222,25 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
 pub struct Client {
     inner: reqwest::Client,
     timeout: Duration,
+    tokens: TokenCache,
 }
 
 impl Client {
+    /// Cliente a partir de los ajustes, con rutas de certificados relativas a `root`
+    /// y caché de tokens en `root/.harpoon/tokens.toml`.
+    pub fn for_collection(collection: &Collection) -> Result<Self> {
+        Self::build(&collection.meta.settings, Some(&collection.root))
+    }
+
+    /// Cliente sin colección (rutas de certificados relativas al directorio actual,
+    /// tokens solo en memoria).
     pub fn new(settings: &Settings) -> Result<Self> {
+        Self::build(settings, None)
+    }
+
+    fn build(settings: &Settings, root: Option<&std::path::Path>) -> Result<Self> {
         let timeout = Duration::from_millis(settings.timeout_ms);
+        let base = root.unwrap_or_else(|| std::path::Path::new("."));
         let mut builder = reqwest::Client::builder()
             .user_agent(concat!("harpoon/", env!("CARGO_PKG_VERSION")))
             .timeout(timeout)
@@ -191,13 +254,87 @@ impl Client {
         if let Some(proxy) = &settings.proxy {
             builder = builder.proxy(reqwest::Proxy::all(proxy).map_err(Error::Client)?);
         }
+        if let Some(ca) = &settings.ca_cert {
+            let pem = read_pem(base, ca)?;
+            for cert in
+                reqwest::Certificate::from_pem_bundle(&pem).map_err(|e| Error::Certificate {
+                    path: ca.clone(),
+                    reason: e.to_string(),
+                })?
+            {
+                builder = builder.add_root_certificate(cert);
+            }
+        }
+        if let Some(cert) = &settings.client_cert {
+            let mut pem = read_pem(base, cert)?;
+            if let Some(key) = &settings.client_key {
+                pem.push(b'\n');
+                pem.extend(read_pem(base, key)?);
+            }
+            let identity = reqwest::Identity::from_pem(&pem).map_err(|e| Error::Certificate {
+                path: cert.clone(),
+                reason: e.to_string(),
+            })?;
+            builder = builder.identity(identity);
+        }
+        let tokens = TokenCache::new(root.map(|r| r.join(".harpoon").join("tokens.toml")));
         Ok(Self {
             inner: builder.build().map_err(Error::Client)?,
             timeout,
+            tokens,
         })
     }
 
     pub async fn send(&self, prepared: &Prepared) -> Result<Response> {
+        match &prepared.pending_auth {
+            None => self.send_raw(prepared, None).await,
+            Some(auth::Pending::OAuth2(cfg)) => {
+                let header =
+                    auth::oauth2_authorization(&self.inner, &self.tokens, cfg, false).await?;
+                let res = self
+                    .send_raw(prepared, Some(("Authorization", header)))
+                    .await?;
+                if res.status != 401 {
+                    return Ok(res);
+                }
+                // Token cacheado pero rechazado: pedimos uno nuevo y reintentamos una vez.
+                self.tokens.invalidate(&auth::oauth2_cache_key(cfg));
+                let header =
+                    auth::oauth2_authorization(&self.inner, &self.tokens, cfg, true).await?;
+                self.send_raw(prepared, Some(("Authorization", header)))
+                    .await
+            }
+            Some(auth::Pending::Digest { username, password }) => {
+                let first = self.send_raw(prepared, None).await?;
+                if first.status != 401 {
+                    return Ok(first);
+                }
+                let Some(challenge) = first.header("www-authenticate") else {
+                    return Ok(first);
+                };
+                let Some(header) = auth::digest_authorization(
+                    challenge,
+                    &prepared.method.to_string(),
+                    &auth::request_uri(&full_url(prepared)),
+                    username,
+                    password,
+                ) else {
+                    return Ok(first);
+                };
+                let mut second = self
+                    .send_raw(prepared, Some(("Authorization", header)))
+                    .await?;
+                second.elapsed_ms += first.elapsed_ms;
+                Ok(second)
+            }
+        }
+    }
+
+    async fn send_raw(
+        &self,
+        prepared: &Prepared,
+        extra_header: Option<(&str, String)>,
+    ) -> Result<Response> {
         let method = reqwest::Method::from_bytes(prepared.method.to_string().as_bytes())
             .map_err(|_| Error::Header(format!("método {}", prepared.method)))?;
         let mut req = self
@@ -210,6 +347,9 @@ impl Client {
                     .map_err(|_| Error::Header(k.clone()))?,
                 reqwest::header::HeaderValue::from_str(v).map_err(|_| Error::Header(k.clone()))?,
             );
+        }
+        if let Some((k, v)) = extra_header {
+            req = req.header(k, v);
         }
         if let Some(body) = &prepared.body {
             req = req.body(body.clone());
@@ -246,6 +386,27 @@ impl Client {
     }
 }
 
+fn read_pem(base: &std::path::Path, p: &str) -> Result<Vec<u8>> {
+    let path = auth::resolve_path(base, p);
+    std::fs::read(&path).map_err(|e| Error::Certificate {
+        path: p.to_owned(),
+        reason: e.to_string(),
+    })
+}
+
+fn full_url(p: &Prepared) -> String {
+    if p.query.is_empty() {
+        return p.url.clone();
+    }
+    let qs: Vec<String> = p
+        .query
+        .iter()
+        .map(|(k, v)| format!("{}={}", urlencode(k), urlencode(v)))
+        .collect();
+    let sep = if p.url.contains('?') { '&' } else { '?' };
+    format!("{}{sep}{}", p.url, qs.join("&"))
+}
+
 /// Atajo: prepara y envía una solicitud, y evalúa sus aserciones.
 pub async fn execute(
     client: &Client,
@@ -277,7 +438,7 @@ fn describe(err: &reqwest::Error) -> String {
     parts.join(": ")
 }
 
-fn base64(input: &[u8]) -> String {
+pub(crate) fn base64(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
@@ -296,7 +457,7 @@ fn base64(input: &[u8]) -> String {
     out
 }
 
-fn urlencode(s: &str) -> String {
+pub(crate) fn urlencode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {

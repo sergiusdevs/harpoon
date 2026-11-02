@@ -180,3 +180,165 @@ async fn variable_sin_definir_no_envia_nada() {
         .unwrap_err();
     assert!(err.to_string().contains("missing"));
 }
+
+// ------------------------------------------------------------ OAuth2 / Digest
+
+/// Servidor con `/token` (client credentials), `/digest` (reto MD5) y `/api`
+/// (exige `Bearer` válido; el token cambia en cada emisión).
+fn spawn_auth_server() -> String {
+    use std::sync::{Arc, Mutex};
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let issued = Arc::new(Mutex::new(0u32));
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut buf = vec![0u8; 65536];
+            let n = stream.read(&mut buf).unwrap();
+            let raw = String::from_utf8_lossy(&buf[..n]).into_owned();
+            let (head, body) = raw.split_once("\r\n\r\n").unwrap_or((&raw, ""));
+            let path = head
+                .lines()
+                .next()
+                .and_then(|l| l.split_whitespace().nth(1))
+                .unwrap_or("/")
+                .to_owned();
+            let auth = head
+                .lines()
+                .find_map(|l| l.strip_prefix("authorization: "))
+                .unwrap_or("")
+                .to_owned();
+            let (status, extra, out) = if path == "/token" {
+                // client_id:client_secret en Basic = "cid:csecret"
+                if auth != "Basic Y2lkOmNzZWNyZXQ="
+                    || !body.contains("grant_type=client_credentials")
+                {
+                    (
+                        "401",
+                        String::new(),
+                        r#"{"error":"invalid_client"}"#.to_owned(),
+                    )
+                } else {
+                    let mut n = issued.lock().unwrap();
+                    *n += 1;
+                    (
+                        "200",
+                        String::new(),
+                        format!(
+                            r#"{{"access_token":"tok{}","expires_in":3600,"token_type":"Bearer"}}"#,
+                            *n
+                        ),
+                    )
+                }
+            } else if path == "/api" {
+                let n = *issued.lock().unwrap();
+                if auth == format!("Bearer tok{n}") {
+                    (
+                        "200",
+                        String::new(),
+                        format!(r#"{{"ok":true,"token":"tok{n}"}}"#),
+                    )
+                } else {
+                    ("401", String::new(), r#"{"error":"bad token"}"#.to_owned())
+                }
+            } else if path == "/digest" {
+                if auth.starts_with("Digest ")
+                    && auth.contains("username=\"Mufasa\"")
+                    && auth.contains("response=\"")
+                {
+                    ("200", String::new(), r#"{"digest":"ok"}"#.to_owned())
+                } else {
+                    (
+                        "401",
+                        "WWW-Authenticate: Digest realm=\"testrealm@host.com\", qop=\"auth\", nonce=\"dcd98b7102dd2f0e8b11d0f600bfb0c093\", opaque=\"5ccc069c403ebaf9f0171e9517f40e41\"\r\n".to_owned(),
+                        String::new(),
+                    )
+                }
+            } else {
+                ("404", String::new(), String::new())
+            };
+            let response = format!(
+                "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                out.len()
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        }
+    });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+async fn oauth2_client_credentials_con_cache_y_reintento() {
+    let base = spawn_auth_server();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut col = Collection::init(tmp.path(), "oauth").unwrap();
+    col.meta.default_environment = None;
+    col.meta.vars.insert("base_url".into(), base.clone());
+    col.meta.auth = Auth::OAuth2 {
+        grant: harpoon_core::model::OAuth2Grant::ClientCredentials,
+        token_url: "{{base_url}}/token".into(),
+        client_id: "cid".into(),
+        client_secret: "csecret".into(),
+        scope: "read".into(),
+        username: String::new(),
+        password: String::new(),
+        refresh_token: String::new(),
+        client_auth: harpoon_core::model::OAuth2ClientAuth::Basic,
+        extra: indexmap::IndexMap::default(),
+        header_prefix: "Bearer".into(),
+    };
+    let scope = col.scope(None).unwrap();
+    let req = Request::new("api", Method::Get, "{{base_url}}/api");
+
+    let client = Client::for_collection(&col).unwrap();
+    let (_, res, _) = harpoon_http::execute(&client, &col, &req, &scope)
+        .await
+        .unwrap();
+    assert_eq!(res.status, 200);
+    assert_eq!(res.json().unwrap()["token"], "tok1");
+    assert!(
+        tmp.path().join(".harpoon/tokens.toml").is_file(),
+        "token cacheado en disco"
+    );
+
+    // Segunda llamada: reutiliza tok1 (no emite otro).
+    let (_, res, _) = harpoon_http::execute(&client, &col, &req, &scope)
+        .await
+        .unwrap();
+    assert_eq!(res.json().unwrap()["token"], "tok1");
+
+    // Un cliente nuevo lee la caché del disco; forzamos que el servidor
+    // invalide tok1 pidiendo un token "fuera" (tok2) y comprobamos que, tras
+    // el 401, Harpoon renueva y reintenta solo una vez.
+    let http = reqwest::Client::new();
+    http.post(format!("{base}/token"))
+        .header("Authorization", "Basic Y2lkOmNzZWNyZXQ=")
+        .body("grant_type=client_credentials")
+        .send()
+        .await
+        .unwrap(); // ahora el servidor solo acepta tok2
+    let client2 = Client::for_collection(&col).unwrap();
+    let (_, res, _) = harpoon_http::execute(&client2, &col, &req, &scope)
+        .await
+        .unwrap();
+    assert_eq!(res.status, 200);
+    assert_eq!(res.json().unwrap()["token"], "tok3");
+}
+
+#[tokio::test]
+async fn digest_responde_al_reto() {
+    let base = spawn_auth_server();
+    let col = collection(&base);
+    let scope = col.scope(None).unwrap();
+    let client = Client::for_collection(&col).unwrap();
+    let mut req = Request::new("d", Method::Get, "{{base_url}}/digest");
+    req.auth = Auth::Digest {
+        username: "Mufasa".into(),
+        password: "Circle Of Life".into(),
+    };
+    let (_, res, _) = harpoon_http::execute(&client, &col, &req, &scope)
+        .await
+        .unwrap();
+    assert_eq!(res.status, 200, "{}", res.text());
+    assert_eq!(res.json().unwrap()["digest"], "ok");
+}

@@ -141,6 +141,8 @@ impl<'a> Report<'a> {
 #[derive(Serialize)]
 pub struct RunItem {
     request: String,
+    /// Número de ejecución (iteración × fila de datos), empezando en 1.
+    run: usize,
     passed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<u16>,
@@ -157,7 +159,7 @@ pub struct RunItem {
 }
 
 impl RunItem {
-    pub fn done(key: &str, x: &Execution) -> Self {
+    pub fn done(key: &str, run: usize, x: &Execution) -> Self {
         let line = format!(
             "{} {key:<24} {} {} → {} ({} ms)",
             mark(x.passed),
@@ -168,6 +170,7 @@ impl RunItem {
         );
         Self {
             request: key.into(),
+            run,
             passed: x.passed,
             status: Some(x.response.status),
             elapsed_ms: Some(x.response.elapsed_ms),
@@ -179,9 +182,10 @@ impl RunItem {
         }
     }
 
-    pub fn failed(key: &str, error: &str) -> Self {
+    pub fn failed(key: &str, run: usize, error: &str) -> Self {
         Self {
             request: key.into(),
+            run,
             passed: false,
             status: None,
             elapsed_ms: None,
@@ -196,6 +200,93 @@ impl RunItem {
     pub const fn passed(&self) -> bool {
         self.passed
     }
+}
+
+pub fn run_header(
+    run_no: usize,
+    total: usize,
+    iteration: usize,
+    row: &indexmap::IndexMap<String, String>,
+) {
+    let data: Vec<String> = row.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    if data.is_empty() {
+        println!("\n── ejecución {run_no}/{total} (iteración {iteration})");
+    } else {
+        println!("\n── ejecución {run_no}/{total} · {}", data.join(" "));
+    }
+}
+
+/// Informe `JUnit` XML: un `testcase` por solicitud ejecutada.
+#[allow(clippy::format_push_string, clippy::cast_precision_loss)]
+pub fn junit(report: &Report<'_>) -> String {
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    }
+    let multi = report.items.iter().any(|i| i.run > 1);
+    let mut out = String::new();
+    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    let errors = report.items.iter().filter(|i| i.error.is_some()).count();
+    let failures = report.failed - errors;
+    let time: f64 = report
+        .items
+        .iter()
+        .filter_map(|i| i.elapsed_ms)
+        .map(|ms| ms as f64 / 1000.0)
+        .sum();
+    out.push_str(&format!(
+        "<testsuites name=\"{}\" tests=\"{}\" failures=\"{failures}\" errors=\"{errors}\" time=\"{time:.3}\">\n",
+        esc(report.collection),
+        report.total
+    ));
+    out.push_str(&format!(
+        "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{failures}\" errors=\"{errors}\" time=\"{time:.3}\">\n",
+        esc(report.collection),
+        report.total
+    ));
+    for i in &report.items {
+        let name = if multi {
+            format!("{} (ejecución {})", i.request, i.run)
+        } else {
+            i.request.clone()
+        };
+        let t = i.elapsed_ms.map_or(0.0, |ms| ms as f64 / 1000.0);
+        out.push_str(&format!(
+            "    <testcase name=\"{}\" classname=\"{}\" time=\"{t:.3}\"",
+            esc(&name),
+            esc(report.collection)
+        ));
+        if let Some(err) = &i.error {
+            out.push_str(&format!(
+                ">\n      <error message=\"{}\"/>\n    </testcase>\n",
+                esc(err)
+            ));
+        } else if !i.passed {
+            let failed: Vec<String> = i
+                .assertions
+                .iter()
+                .filter(|a| !a.passed)
+                .map(|a| format!("{}{}", a.name, detail(a.detail.as_deref())))
+                .chain(
+                    i.tests
+                        .iter()
+                        .filter(|t| !t.passed)
+                        .map(|t| format!("{}{}", t.name, detail(t.detail.as_deref()))),
+                )
+                .collect();
+            out.push_str(&format!(
+                ">\n      <failure message=\"{}\">{}</failure>\n    </testcase>\n",
+                esc(&format!("{} comprobación(es) fallida(s)", failed.len())),
+                esc(&failed.join("\n"))
+            ));
+        } else {
+            out.push_str("/>\n");
+        }
+    }
+    out.push_str("  </testsuite>\n</testsuites>\n");
+    out
 }
 
 pub fn run_progress(item: &RunItem) {

@@ -36,16 +36,19 @@ Harpoon recorta y reordena para ser **totalmente offline**:
 - Escritura del formato preservando comentarios y orden (`toml_edit`).
 - `harpoon validate` (valida la colección sin enviar nada).
 
-## Fase 2 — REST + CLI para CI 🚧
+## Fase 2 — REST + CLI para CI ✅
 
-Hecho: `harpoon-http` (reqwest + rustls), auth Basic/Bearer/API key con herencia
-de colección, `[settings]` (timeout, redirecciones, proxy, insecure), `[expect]`,
-`harpoon send` y `harpoon run` con `--json`, `--bail` y códigos de salida.
+Hecho: `harpoon-http` (reqwest + rustls), auth Basic/Bearer/API key/Digest/OAuth2
+(client credentials, password, refresh token; caché en `.harpoon/tokens.toml`),
+`[settings]` (timeout, redirecciones, proxy, insecure, CA propia, mTLS), `[expect]`,
+`harpoon send` y `harpoon run` con `--json`, `--junit`, `--iterations`, `--data`,
+`--bail` y códigos de salida; variables dinámicas `{{$uuid}}`, `{{$timestamp}}`,
+`{{$isoTimestamp}}`, `{{$randomInt a b}}`, `{{$randomHex n}}`. Pendiente: historial
+local de ejecuciones y reporter HTML (van con la app).
 
 - `harpoon-http` sobre `reqwest` + `rustls` (sin OpenSSL del sistema).
-- Pendiente de auth: Digest, OAuth2 (client credentials, password, refresh), OAuth 1.0.
-- Pendiente: certificados de cliente (mTLS), CA propia, `--data csv/json`, `--iterations`.
-- Reporters pendientes: JUnit XML, HTML estático.
+- OAuth 1.0: fuera de alcance por ahora.
+- Reporter HTML estático: pendiente.
 - Historial local de ejecuciones (`.harpoon/history/`, ignorado por Git).
 
 ## Fase 3 — Scripts y tests ✅

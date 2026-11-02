@@ -37,6 +37,7 @@ impl std::fmt::Display for Method {
 /// Autenticación de una solicitud. `None` = heredar de la carpeta/colección.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum Auth {
     #[default]
     Inherit,
@@ -54,6 +55,42 @@ pub enum Auth {
         #[serde(default)]
         r#in: ApiKeyLocation,
     },
+    /// HTTP Digest (RFC 7616): reto 401 → respuesta firmada. MD5 y SHA-256.
+    Digest {
+        username: String,
+        password: String,
+    },
+    /// OAuth 2.0: se obtiene un token del `token_url` y se envía como Bearer.
+    /// Los tokens se cachean en `.harpoon/tokens.toml` hasta que caducan.
+    #[serde(rename = "oauth2")]
+    OAuth2 {
+        #[serde(default)]
+        grant: OAuth2Grant,
+        token_url: String,
+        #[serde(default)]
+        client_id: String,
+        #[serde(default)]
+        client_secret: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        scope: String,
+        /// Solo para `grant = "password"`.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        username: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        password: String,
+        /// Solo para `grant = "refresh_token"`.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        refresh_token: String,
+        /// Cómo se envían las credenciales de cliente.
+        #[serde(default)]
+        client_auth: OAuth2ClientAuth,
+        /// Parámetros extra del cuerpo (`audience`, `resource`...).
+        #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+        extra: IndexMap<String, String>,
+        /// Prefijo de la cabecera `Authorization`.
+        #[serde(default = "default_bearer")]
+        header_prefix: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -62,6 +99,29 @@ pub enum ApiKeyLocation {
     #[default]
     Header,
     Query,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OAuth2Grant {
+    #[default]
+    ClientCredentials,
+    Password,
+    RefreshToken,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OAuth2ClientAuth {
+    /// `Authorization: Basic base64(id:secret)` (lo más habitual).
+    #[default]
+    Basic,
+    /// `client_id` y `client_secret` en el cuerpo del formulario.
+    Body,
+}
+
+fn default_bearer() -> String {
+    "Bearer".into()
 }
 
 /// Cuerpo de la solicitud.
@@ -188,6 +248,14 @@ pub struct Settings {
     /// No verificar el certificado TLS del servidor (solo desarrollo).
     #[serde(default)]
     pub insecure: bool,
+    /// CA adicional en PEM (ruta relativa a la colección) para servidores internos.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ca_cert: Option<String>,
+    /// Certificado de cliente (PEM) para mTLS; si la clave va aparte, `client_key`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_cert: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_key: Option<String>,
 }
 
 impl Default for Settings {
@@ -197,6 +265,9 @@ impl Default for Settings {
             follow_redirects: true,
             proxy: None,
             insecure: false,
+            ca_cert: None,
+            client_cert: None,
+            client_key: None,
         }
     }
 }

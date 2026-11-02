@@ -6,7 +6,7 @@ Las colecciones viven como archivos TOML junto a tu código, se versionan con Gi
 y la misma colección sirve para el trabajo manual (TUI/escritorio), la terminal y CI/CD.
 Sin cuenta, sin nube, sin telemetría, sin descargas en tiempo de ejecución.
 
-> Estado: **fase 3** (scripts y tests) hecha; escritorio en marcha. Ver [ROADMAP.md](ROADMAP.md).
+> Estado: fases 0–3 completas (núcleo, REST + CLI para CI, scripts y tests); escritorio en marcha. Ver [ROADMAP.md](ROADMAP.md).
 
 ## Principios
 
@@ -31,6 +31,8 @@ harpoon send health --json     # lo mismo, en JSON
 harpoon run                    # ejecuta toda la colección y evalúa [expect]
 harpoon run users --env prod   # solo la carpeta users/, con otro entorno
 harpoon run --bail --json      # para CI: se detiene al primer fallo, informe JSON
+harpoon run --junit out.xml    # informe JUnit para GitHub Actions / GitLab
+harpoon run --data casos.csv   # una ejecución por fila; --iterations N para repetir
 ```
 
 Códigos de salida: `0` todo correcto, `1` alguna aserción o test falló, `2` error de uso o de red.
@@ -68,6 +70,7 @@ docs/
   adr/          decisiones de arquitectura
   format.md     especificación del formato de colección
   scripting.md  API de scripts y tests
+  auth.md       Basic, Bearer, API key, Digest, OAuth2, mTLS, uso en CI
 examples/
   petstore/     colección de ejemplo
 ```

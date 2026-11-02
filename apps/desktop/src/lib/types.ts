@@ -8,7 +8,46 @@ export type Auth =
   | { type: "none" }
   | { type: "basic"; username: string; password: string }
   | { type: "bearer"; token: string }
-  | { type: "api_key"; key: string; value: string; in: "header" | "query" };
+  | { type: "api_key"; key: string; value: string; in: "header" | "query" }
+  | { type: "digest"; username: string; password: string }
+  | {
+      type: "oauth2";
+      grant: "client_credentials" | "password" | "refresh_token";
+      token_url: string;
+      client_id: string;
+      client_secret: string;
+      scope: string;
+      username: string;
+      password: string;
+      refresh_token: string;
+      client_auth: "basic" | "body";
+      extra: Record<string, string>;
+      header_prefix: string;
+    };
+
+export function emptyOAuth2(): Extract<Auth, { type: "oauth2" }> {
+  return {
+    type: "oauth2",
+    grant: "client_credentials",
+    token_url: "",
+    client_id: "",
+    client_secret: "",
+    scope: "",
+    username: "",
+    password: "",
+    refresh_token: "",
+    client_auth: "basic",
+    extra: {},
+    header_prefix: "Bearer",
+  };
+}
+
+export function normalizeAuth(a: Auth | undefined): Auth {
+  if (!a) return { type: "inherit" };
+  if (a.type === "api_key") return { ...a, in: a.in ?? "header" };
+  if (a.type === "oauth2") return { ...emptyOAuth2(), ...a, extra: a.extra ?? {} };
+  return a;
+}
 
 export type Body =
   | { type: "none" }
@@ -48,8 +87,18 @@ export interface CollectionMeta {
   default_environment: string | null;
   vars: Record<string, string>;
   auth: Auth;
-  settings: { timeout_ms: number; follow_redirects: boolean; proxy?: string; insecure: boolean };
+  settings: Settings;
   scripts: Scripts;
+}
+
+export interface Settings {
+  timeout_ms: number;
+  follow_redirects: boolean;
+  proxy?: string;
+  insecure: boolean;
+  ca_cert?: string;
+  client_cert?: string;
+  client_key?: string;
 }
 
 export interface Environment {
@@ -110,14 +159,13 @@ export function emptyRequest(name: string, method: Method = "GET"): Request {
 
 /** Rellena los campos que serde omite cuando están vacíos. */
 export function normalizeRequest(r: Partial<Request> & { name: string; url: string }): Request {
-  const auth = (r.auth ?? { type: "inherit" }) as Auth;
   return {
     name: r.name,
     method: r.method ?? "GET",
     url: r.url,
     headers: r.headers ?? {},
     query: r.query ?? {},
-    auth: auth.type === "api_key" ? { ...auth, in: auth.in ?? "header" } : auth,
+    auth: normalizeAuth(r.auth as Auth | undefined),
     body: r.body ?? { type: "none" },
     scripts: { pre: "", post: "", test: "", ...(r.scripts ?? {}) },
     expect: { headers: {}, body_contains: [], ...(r.expect ?? {}) },
@@ -134,7 +182,7 @@ export function normalizeCollection(c: Collection): Collection {
   const meta: CollectionMeta = {
     ...c.meta,
     vars: c.meta.vars ?? {},
-    auth: c.meta.auth ?? { type: "none" },
+    auth: normalizeAuth(c.meta.auth ?? { type: "none" }),
     settings: Object.assign({ timeout_ms: 30000, follow_redirects: true, insecure: false }, c.meta.settings ?? {}),
     scripts: Object.assign({ pre: "", post: "", test: "" }, c.meta.scripts ?? {}),
   };

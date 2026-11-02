@@ -83,7 +83,7 @@ async fn login_guarda_token_y_la_siguiente_lo_usa() {
     "#
     .into();
 
-    let client = Client::new(&col.meta.settings).unwrap();
+    let client = Client::for_collection(&col).unwrap();
 
     // Sin token aún: la interpolación de {{token}} falla antes de enviar.
     let err = harpoon_script::runner::execute_persistent(&client, &col, &me, None)
@@ -123,7 +123,7 @@ async fn script_post_roto_no_impide_la_respuesta() {
     col.meta.default_environment = None;
     let mut req = Request::new("login", Method::Post, "{{base_url}}/login");
     req.scripts.post = "harpoon.res.json().nope.deeper".into();
-    let client = Client::new(&col.meta.settings).unwrap();
+    let client = Client::for_collection(&col).unwrap();
     let exec = harpoon_script::execute(&client, &col, &req, None, indexmap::IndexMap::default())
         .await
         .unwrap();

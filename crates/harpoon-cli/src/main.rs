@@ -1,5 +1,6 @@
 //! `harpoon`: interfaz de línea de comandos.
 
+mod datafile;
 mod output;
 
 use std::{path::PathBuf, process::ExitCode};
@@ -8,6 +9,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use harpoon_core::Collection;
 use harpoon_http::Client;
+use indexmap::IndexMap;
 
 #[derive(Parser)]
 #[command(name = "harpoon", version, about = "Cliente de APIs 100% offline")]
@@ -58,6 +60,16 @@ enum Command {
         /// Salida en JSON (informe completo).
         #[arg(long)]
         json: bool,
+        /// Escribe un informe `JUnit` XML en esta ruta (para CI).
+        #[arg(long, value_name = "ARCHIVO")]
+        junit: Option<PathBuf>,
+        /// Repite la ejecución N veces (`{{iteration}}` = 1..N).
+        #[arg(long, default_value_t = 1, value_name = "N")]
+        iterations: usize,
+        /// Archivo de datos (.csv o .json con una lista de objetos): una ejecución por fila,
+        /// con sus columnas disponibles como variables.
+        #[arg(long, value_name = "ARCHIVO")]
+        data: Option<PathBuf>,
     },
 }
 
@@ -72,6 +84,7 @@ fn main() -> ExitCode {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn run() -> anyhow::Result<ExitCode> {
     let cli = Cli::parse();
     match cli.command {
@@ -109,7 +122,7 @@ async fn run() -> anyhow::Result<ExitCode> {
                 .requests
                 .get(&request)
                 .with_context(|| format!("no existe la solicitud `{request}`"))?;
-            let client = Client::new(&col.meta.settings)?;
+            let client = Client::for_collection(&col)?;
             let exec =
                 harpoon_script::runner::execute_persistent(&client, &col, req, cli.env.as_deref())
                     .await?;
@@ -120,9 +133,16 @@ async fn run() -> anyhow::Result<ExitCode> {
             }
             Ok(exit_for(exec.passed))
         }
-        Command::Run { prefix, bail, json } => {
+        Command::Run {
+            prefix,
+            bail,
+            json,
+            junit,
+            iterations,
+            data,
+        } => {
             let col = open(cli.collection.as_deref())?;
-            let client = Client::new(&col.meta.settings)?;
+            let client = Client::for_collection(&col)?;
             let selected: Vec<(&String, &harpoon_core::Request)> = col
                 .requests
                 .iter()
@@ -137,37 +157,72 @@ async fn run() -> anyhow::Result<ExitCode> {
                 "ninguna solicitud coincide con el filtro"
             );
 
+            // Filas de datos: cada una es una ejecución completa.
+            let rows: Vec<IndexMap<String, String>> = match &data {
+                Some(path) => datafile::load(path)
+                    .with_context(|| format!("no se pudo leer {}", path.display()))?,
+                None => vec![IndexMap::new()],
+            };
+            anyhow::ensure!(!rows.is_empty(), "el archivo de datos está vacío");
+
             let mut report = output::Report::new(&col.meta.name, cli.env.as_deref());
             // Las variables de ejecución fluyen de una solicitud a la siguiente
             // y se persisten al final.
             let mut vars = col.load_runtime_vars();
-            for (key, req) in selected {
-                let item = match harpoon_script::execute(
-                    &client,
-                    &col,
-                    req,
-                    cli.env.as_deref(),
-                    vars.clone(),
-                )
-                .await
-                {
-                    Ok(exec) => {
-                        vars.clone_from(&exec.vars);
-                        output::RunItem::done(key, &exec)
+            let total_runs = iterations * rows.len();
+            'outer: for iteration in 1..=iterations {
+                for (row_idx, row) in rows.iter().enumerate() {
+                    let run_no = (iteration - 1) * rows.len() + row_idx + 1;
+                    if !json && total_runs > 1 {
+                        output::run_header(run_no, total_runs, iteration, row);
                     }
-                    Err(err) => output::RunItem::failed(key, &err.to_string()),
-                };
-                if !json {
-                    output::run_progress(&item);
-                }
-                let ok = item.passed();
-                report.push(item);
-                if bail && !ok {
-                    break;
+                    let mut run_vars = vars.clone();
+                    run_vars.insert("iteration".into(), iteration.to_string());
+                    for (k, v) in row {
+                        run_vars.insert(k.clone(), v.clone());
+                    }
+                    for (key, req) in &selected {
+                        let item = match harpoon_script::execute(
+                            &client,
+                            &col,
+                            req,
+                            cli.env.as_deref(),
+                            run_vars.clone(),
+                        )
+                        .await
+                        {
+                            Ok(exec) => {
+                                run_vars.clone_from(&exec.vars);
+                                output::RunItem::done(key, run_no, &exec)
+                            }
+                            Err(err) => output::RunItem::failed(key, run_no, &err.to_string()),
+                        };
+                        if !json {
+                            output::run_progress(&item);
+                        }
+                        let ok = item.passed();
+                        report.push(item);
+                        if bail && !ok {
+                            break 'outer;
+                        }
+                    }
+                    // Lo que fijen los scripts persiste; las columnas de datos no.
+                    for (k, v) in run_vars {
+                        if k != "iteration" && !row.contains_key(&k) {
+                            vars.insert(k, v);
+                        }
+                    }
                 }
             }
             let all_ok = report.all_passed();
             col.save_runtime_vars(&vars)?;
+            if let Some(path) = &junit {
+                std::fs::write(path, output::junit(&report))
+                    .with_context(|| format!("no se pudo escribir {}", path.display()))?;
+                if !json {
+                    eprintln!("Informe JUnit escrito en {}", path.display());
+                }
+            }
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {

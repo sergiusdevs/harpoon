@@ -175,7 +175,7 @@ fn list_folders(root: PathBuf) -> Result<Vec<String>, String> {
 #[tauri::command]
 async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
     let col = load(&args.root)?;
-    let client = Client::new(&col.meta.settings).map_err(|e| e.to_string())?;
+    let client = Client::for_collection(&col).map_err(|e| e.to_string())?;
     let exec = harpoon_script::runner::execute_persistent(
         &client,
         &col,
