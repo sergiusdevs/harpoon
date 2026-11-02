@@ -98,3 +98,26 @@ export function emptyRequest(name: string, method: Method = "GET"): Request {
     docs: "",
   };
 }
+
+/** Rellena los campos que serde omite cuando están vacíos. */
+export function normalizeRequest(r: Partial<Request> & { name: string; url: string }): Request {
+  const auth = (r.auth ?? { type: "inherit" }) as Auth;
+  return {
+    name: r.name,
+    method: r.method ?? "GET",
+    url: r.url,
+    headers: r.headers ?? {},
+    query: r.query ?? {},
+    auth: auth.type === "api_key" ? { ...auth, in: auth.in ?? "header" } : auth,
+    body: r.body ?? { type: "none" },
+    scripts: { pre: "", post: "", test: "", ...(r.scripts ?? {}) },
+    expect: { headers: {}, body_contains: [], ...(r.expect ?? {}) },
+    docs: r.docs ?? "",
+  };
+}
+
+export function normalizeCollection(c: Collection): Collection {
+  const requests: Record<string, Request> = {};
+  for (const [k, r] of Object.entries(c.requests)) requests[k] = normalizeRequest(r);
+  return { ...c, requests };
+}
