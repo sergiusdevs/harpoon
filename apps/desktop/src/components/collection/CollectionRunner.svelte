@@ -5,7 +5,7 @@
   import Modal from "../common/Modal.svelte";
   import MethodBadge from "../common/MethodBadge.svelte";
 
-  type RunResult = { key: string; name: string; method: Request["method"]; passed: boolean; status?: number; elapsed?: number; failures: Outcome[]; error?: string };
+  type RunResult = { key: string; name: string; method: Request["method"]; passed: boolean; status?: number; elapsed?: number; checks?: number; failures: Outcome[]; error?: string };
   let folder = $state(store.runFolder);
   let bail = $state(false);
   let running = $state(false);
@@ -33,7 +33,7 @@
         current = key;
         try {
           const exchange = await bridge.sendRequest(root, env, request, key);
-          results.push({ key, name: request.name, method: request.method, passed: exchange.passed, status: exchange.response.status, elapsed: exchange.response.elapsed_ms, failures: [...exchange.assertions, ...exchange.tests].filter((item) => !item.passed) });
+          results.push({ key, name: request.name, method: request.method, passed: exchange.passed, status: exchange.response.status, elapsed: exchange.response.elapsed_ms, checks: exchange.assertions.length + exchange.tests.length, failures: [...exchange.assertions, ...exchange.tests].filter((item) => !item.passed) });
           if (store.collection?.root === root) store.runtimeVariables = exchange.vars;
           if (bail && !exchange.passed) break;
         } catch (cause) {
@@ -51,10 +51,10 @@
 
 <Modal title="Ejecutar colección" width={760} onclose={close}>
   <div class="controls">
-    <label>Alcance<select bind:value={folder} disabled={running}><option value="">Toda la colección</option>{#each store.folders as path}<option value={path}>{path}/</option>{/each}</select></label>
+    <label>Alcance<select bind:value={folder} disabled={running} onchange={() => { results = []; completed = false; error = ""; }}><option value="">Toda la colección</option>{#each store.folders as path}<option value={path}>{path}/</option>{/each}</select></label>
     <label class="check"><input type="checkbox" bind:checked={bail} disabled={running} /> Detener al primer fallo</label>
   </div>
-  <p class="muted hint">{selected.length} solicitudes · entorno: {store.env ?? "sin entorno"}. Se ejecutan en orden y comparten las variables de ejecución.</p>
+  <p class="muted hint">{selected.length} solicitudes · entorno: {store.env ?? store.collection?.meta.default_environment ?? "sin entorno"}. Se ejecutan en orden y comparten las variables de ejecución. El resultado depende de las aserciones y tests configurados.</p>
   {#if store.dirty}<p class="warning">Guarda los cambios de la solicitud actual para ejecutar la versión guardada.</p>{/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   {#if running}<p class="muted hint" aria-live="polite">{stop ? "Se detendrá al terminar la solicitud actual" : `Ejecutando ${current}…`}</p>{/if}
@@ -66,6 +66,7 @@
           <button class="result-head" onclick={() => openRequest(result.key)} disabled={running} title="Abrir solicitud">
             <span class:failed={!result.passed} class:passed={result.passed}>{result.passed ? "✓" : "✕"}</span><MethodBadge method={result.method} /><span class="name">{result.name}</span><span class="muted">{result.status ?? "Error"}{result.elapsed !== undefined ? ` · ${result.elapsed} ms` : ""}</span>
           </button>
+          {#if result.checks === 0}<div class="detail muted">Sin aserciones ni tests</div>{/if}
           {#if result.error}<div class="detail error">{result.error}</div>{/if}
           {#each result.failures as failure}<div class="detail error">{failure.name}{failure.detail ? `: ${failure.detail}` : ""}</div>{/each}
         </div>
