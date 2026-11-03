@@ -45,6 +45,7 @@ test = 'test("json", () => expect(harpoon.res.header("content-type")).to.include
 timeout_ms = 30000
 follow_redirects = true
 insecure = false                # true = no verificar TLS (solo desarrollo)
+# http_version = "1.1"              # forzar HTTP/1.1; por defecto "auto" (HTTP/2 si el servidor lo ofrece)
 # ca_cert = "certs/ca.pem"           # CA adicional; client_cert / client_key para mTLS
 # proxy = "http://127.0.0.1:8888"   # respeta NO_PROXY; si falta, se usan HTTP(S)_PROXY / NO_PROXY
 ```

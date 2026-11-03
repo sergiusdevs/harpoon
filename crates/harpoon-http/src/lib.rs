@@ -548,6 +548,9 @@ impl Client {
             } else {
                 reqwest::redirect::Policy::none()
             });
+        if settings.http_version == harpoon_core::HttpVersion::Http1 {
+            builder = builder.http1_only();
+        }
         if let Some(proxy) = &settings.proxy {
             // Como curl: el proxy explícito respeta `NO_PROXY`/`no_proxy` del entorno.
             let proxy = reqwest::Proxy::all(proxy)

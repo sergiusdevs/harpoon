@@ -64,6 +64,12 @@
         <label><span>Timeout (ms)</span><input class="mono" type="number" bind:value={meta.settings.timeout_ms} oninput={touch} /></label>
         <label><span>Seguir redirecciones</span><input type="checkbox" bind:checked={meta.settings.follow_redirects} onchange={touch} /></label>
         <label><span>Proxy</span><input class="mono" value={meta.settings.proxy ?? ""} oninput={(e) => { meta.settings.proxy = e.currentTarget.value || undefined; touch(); }} placeholder="http://127.0.0.1:8888 (vacío = HTTP_PROXY del sistema)" /></label>
+        <label><span>Versión HTTP</span>
+          <select value={meta.settings.http_version ?? "auto"} onchange={(e) => { meta.settings.http_version = e.currentTarget.value === "1.1" ? "1.1" : undefined; touch(); }} title="Algunos servidores o proxies rechazan HTTP/2; con HTTP/1.1 se evita">
+            <option value="auto">Automática (HTTP/2 si el servidor lo ofrece)</option>
+            <option value="1.1">Solo HTTP/1.1</option>
+          </select>
+        </label>
         <label><span>Ignorar TLS inválido</span><input type="checkbox" bind:checked={meta.settings.insecure} onchange={touch} /></label>
         <div class="sub">Certificados (rutas relativas a la colección, formato PEM)</div>
         <label><span>CA adicional</span><input class="mono" value={meta.settings.ca_cert ?? ""} oninput={(e) => { meta.settings.ca_cert = e.currentTarget.value || undefined; touch(); }} placeholder="certs/ca.pem" /></label>

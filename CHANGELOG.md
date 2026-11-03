@@ -1,5 +1,12 @@
 # Cambios
 
+## Sin publicar
+
+- Respuestas comprimidas con brotli y deflate además de gzip
+  (`Accept-Encoding: gzip, deflate, br`).
+- Ajuste `http_version = "1.1"` en `[settings]` (y en Ajustes de la colección) para
+  servidores o proxies que rechazan HTTP/2.
+
 ## 0.0.1-alpha.1 — primera versión de prueba
 
 Primera versión pública para probar Harpoon. Es una **alpha**: puede tener fallos

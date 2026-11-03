@@ -69,7 +69,7 @@ export function runtimeHeaders(request: Request, inherited: { auth: Auth; source
   rows.push(
     { name: "User-Agent", value: USER_AGENT, source: "Harpoon", toggleable: true },
     { name: "Accept", value: "*/*", source: "Cliente HTTP", toggleable: false },
-    { name: "Accept-Encoding", value: "gzip", source: "Cliente HTTP", toggleable: false },
+    { name: "Accept-Encoding", value: "gzip, deflate, br", source: "Cliente HTTP", toggleable: false },
     { name: "Host", value: hostOf(resolvedUrl || request.url), source: "Cliente HTTP", toggleable: false },
   );
   return rows.map((row) => ({ ...row, overridden: has(request.headers, disabled, row.name) }));

@@ -365,6 +365,27 @@ pub struct Settings {
     pub client_cert: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_key: Option<String>,
+    /// Versión de HTTP: la que negocie el servidor o siempre HTTP/1.1.
+    #[serde(default, skip_serializing_if = "HttpVersion::is_auto")]
+    pub http_version: HttpVersion,
+}
+
+/// `http_version` en `[settings]`: `"auto"` (HTTP/2 si el servidor lo ofrece) o `"1.1"`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HttpVersion {
+    #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    /// Para servidores o proxies que se llevan mal con HTTP/2.
+    #[serde(rename = "1.1")]
+    Http1,
+}
+
+impl HttpVersion {
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_auto(&self) -> bool {
+        *self == Self::Auto
+    }
 }
 
 impl Default for Settings {
@@ -377,6 +398,7 @@ impl Default for Settings {
             ca_cert: None,
             client_cert: None,
             client_key: None,
+            http_version: HttpVersion::Auto,
         }
     }
 }
@@ -416,4 +438,25 @@ fn default_timeout_ms() -> u64 {
 
 fn default_true() -> bool {
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn http_version_por_defecto_no_se_escribe() {
+        let auto: Settings = toml::from_str("").unwrap();
+        assert_eq!(auto.http_version, HttpVersion::Auto);
+        assert!(!toml::to_string(&auto).unwrap().contains("http_version"));
+
+        let http1: Settings = toml::from_str("http_version = \"1.1\"").unwrap();
+        assert_eq!(http1.http_version, HttpVersion::Http1);
+        assert!(
+            toml::to_string(&http1)
+                .unwrap()
+                .contains("http_version = \"1.1\"")
+        );
+        assert!(toml::from_str::<Settings>("http_version = \"3\"").is_err());
+    }
 }

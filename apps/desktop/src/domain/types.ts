@@ -147,6 +147,8 @@ export interface Settings {
   ca_cert?: string;
   client_cert?: string;
   client_key?: string;
+  /** "auto" (por defecto) o "1.1" para forzar HTTP/1.1. */
+  http_version?: "auto" | "1.1";
 }
 
 export interface Environment {

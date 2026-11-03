@@ -23,6 +23,7 @@ export function buildCurl(prepared: CurlPrepared): string {
   if (settings.follow_redirects) args.push("--location", "--max-redirs", "10");
   if (settings.timeout_ms > 0) args.push("--max-time", String(settings.timeout_ms / 1000));
   if (settings.insecure) args.push("--insecure");
+  if (settings.http_version === "1.1") args.push("--http1.1");
   if (settings.proxy) args.push("--proxy", quote(settings.proxy));
   if (settings.ca_cert) args.push("--cacert", quote(settings.ca_cert));
   if (settings.client_cert) args.push("--cert", quote(settings.client_cert));
