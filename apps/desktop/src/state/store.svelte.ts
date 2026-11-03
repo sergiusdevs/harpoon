@@ -6,7 +6,7 @@ import { validateGraphql } from "../domain/graphql";
 import { requestFailure, type RequestFailure } from "../domain/requestFailure";
 import { streams } from "./streams.svelte";
 import { api, folderChain } from "../services/api";
-import { themes, type Theme } from "../domain/themes";
+import { resolveTheme, themes, type Theme } from "../domain/themes";
 import { interfaceFonts, editorFonts, type InterfaceFont, type EditorFont } from "../domain/fonts";
 import { convertRequestType, newTypedRequest, requestType, type RequestType, type Collection, type CollectionMeta, type Environment, type Exchange, type FolderConfig, type HistoryEntry, type Method, type MissingSecret, type Request, type SecretFinding, type SecretScope } from "../domain/types";
 import { applySecret } from "../domain/secrets";
@@ -712,9 +712,20 @@ class Store {
 
   // ---------- varios ----------
 
+  /** Aplica el tema elegido; "system" sigue el modo claro/oscuro del sistema en vivo. */
+  private applyTheme() {
+    const media = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
+    document.documentElement.dataset.theme = resolveTheme(this.theme, media?.matches ?? true);
+    if (media && !this.followingSystem) {
+      this.followingSystem = true;
+      media.addEventListener("change", () => { if (this.theme === "system") this.applyTheme(); });
+    }
+  }
+  private followingSystem = false;
+
   setTheme(theme: Theme) {
     this.theme = theme;
-    document.documentElement.dataset.theme = this.theme;
+    this.applyTheme();
     try {
       localStorage.setItem("harpoon.theme", this.theme);
     } catch {
@@ -747,7 +758,7 @@ class Store {
       const theme = themes.find((item) => item.id === t);
       if (theme) {
         this.theme = theme.id;
-        document.documentElement.dataset.theme = theme.id;
+        this.applyTheme();
       }
       const interfaceFont = interfaceFonts.find((font) => font.id === localStorage.getItem("harpoon.interfaceFont"));
       const editorFont = editorFonts.find((font) => font.id === localStorage.getItem("harpoon.editorFont"));

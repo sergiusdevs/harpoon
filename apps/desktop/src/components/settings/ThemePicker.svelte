@@ -3,6 +3,12 @@
   import { themes } from "../../domain/themes";
   import { interfaceFonts, editorFonts, type InterfaceFont, type EditorFont } from "../../domain/fonts";
   let tab = $state<"themes" | "fonts">("themes");
+  let filter = $state<"all" | "dark" | "light">("all");
+  const groups = $derived([
+    { kind: "system", label: "", items: themes.filter((t) => t.kind === "system") },
+    { kind: "dark", label: "Oscuros", items: themes.filter((t) => t.kind === "dark") },
+    { kind: "light", label: "Claros", items: themes.filter((t) => t.kind === "light") },
+  ].filter((g) => filter === "all" ? true : g.kind === filter));
   import Modal from "../common/Modal.svelte";
   import { tick } from "svelte";
 
@@ -12,8 +18,8 @@
     event.preventDefault();
     const next = (index + step + themes.length) % themes.length;
     store.setTheme(themes[next].id);
-    const group = (event.currentTarget as HTMLElement).parentElement;
-    void tick().then(() => group?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next]?.focus());
+    const list = (event.currentTarget as HTMLElement).closest('[role="radiogroup"]');
+    void tick().then(() => list?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus());
   }
 </script>
 
@@ -24,16 +30,35 @@
   </div>
   <p class="intro muted">Los cambios se aplican al instante y se guardan en este dispositivo.</p>
   {#if tab === "themes"}
-  <div class="themes" role="radiogroup" aria-label="Tema de la aplicación">
-    {#each themes as theme, index}
-      <button type="button" role="radio" aria-checked={store.theme === theme.id} tabindex={store.theme === theme.id ? 0 : -1} class:chosen={store.theme === theme.id} onclick={() => store.setTheme(theme.id)} onkeydown={(event) => navigate(event, index)}>
-        <span class="preview" style:background={theme.bg} style:color={theme.text}>
-          <span class="preview-sidebar" style:background={theme.panel}></span>
-          <span class="preview-content"><i style:background={theme.accent}></i><i></i><i></i></span>
-        </span>
-        <span class="name">{theme.name} {#if store.theme === theme.id}<span class="check" aria-hidden="true">✓</span>{/if}</span>
-        <span class="detail">{theme.detail}</span>
-      </button>
+  <div class="filters" role="group" aria-label="Filtrar temas">
+    {#each [["all", "Todos"], ["dark", "Oscuros"], ["light", "Claros"]] as [id, label]}
+      <button class:on={filter === id} aria-pressed={filter === id} onclick={() => (filter = id as typeof filter)}>{label}</button>
+    {/each}
+    <span class="muted count">{themes.length - 1} temas</span>
+  </div>
+  <div class="theme-list" role="radiogroup" aria-label="Tema de la aplicación">
+    {#each groups as group (group.kind)}
+      {#if group.label}<h4>{group.label}</h4>{/if}
+      <div class="themes">
+        {#each group.items as theme (theme.id)}
+          {@const index = themes.indexOf(theme)}
+          <button type="button" role="radio" aria-checked={store.theme === theme.id} tabindex={store.theme === theme.id ? 0 : -1} class:chosen={store.theme === theme.id} onclick={() => store.setTheme(theme.id)} onkeydown={(event) => navigate(event, index)}>
+            {#if theme.kind === "system"}
+              <span class="preview split">
+                <span class="half" style:background="#2b313c"><i style:background="#7cc4c8"></i></span>
+                <span class="half" style:background="#f6f6f4"><i style:background="#1f6f8b"></i></span>
+              </span>
+            {:else}
+              <span class="preview" style:background={theme.bg} style:color={theme.text}>
+                <span class="preview-sidebar" style:background={theme.panel}></span>
+                <span class="preview-content"><i style:background={theme.accent}></i><i></i><i></i></span>
+              </span>
+            {/if}
+            <span class="name">{theme.name} {#if store.theme === theme.id}<span class="check" aria-hidden="true">✓</span>{/if}</span>
+            <span class="detail">{theme.detail}</span>
+          </button>
+        {/each}
+      </div>
     {/each}
   </div>
   {:else}
@@ -65,7 +90,19 @@
   .sample code i { color: var(--syntax-string); font-style: normal; }
   .hint { margin: 0; font-size: 11px; }
   .intro { margin: 0 0 16px; font-size: 12px; }
-  .themes { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 10px; }
+  .filters { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+  .filters button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--text-muted); transition: background var(--t), color var(--t), border-color var(--t); }
+  .filters button:hover { color: var(--text); border-color: var(--border-strong); }
+  .filters button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+  .filters .count { margin-left: auto; font-size: 11px; }
+  .theme-list { max-height: min(520px, 60vh); overflow-y: auto; padding: 2px; margin: -2px; }
+  h4 { margin: 16px 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+  .themes button { transition: border-color var(--t), transform var(--t), box-shadow var(--t); }
+  .themes button:hover { transform: translateY(-2px); }
+  .preview.split { padding: 0; }
+  .half { flex: 1; display: flex; align-items: flex-start; padding: 12px; }
+  .half i { width: 60%; height: 4px; border-radius: 4px; }
+  .themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 10px; }
   .themes button { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
   .themes button:hover { border-color: var(--border-strong); }
   .themes button.chosen { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
