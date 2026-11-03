@@ -37,6 +37,8 @@ export interface Api {
   gitInit(root: string): Promise<GitStatus>;
   listFolders(root: string): Promise<string[]>;
   saveFolderVars(root: string, folder: string, vars: Record<string, string>, secrets?: string[]): Promise<Collection>;
+  /** Color de la carpeta en el árbol (`null` lo quita). */
+  setFolderColor(root: string, folder: string, color: string | null): Promise<Collection>;
   /** Cabeceras, auth y scripts que heredan las solicitudes de la carpeta. */
   saveFolderSettings(root: string, folder: string, settings: Pick<import("../domain/types").FolderConfig, "headers" | "auth" | "scripts">): Promise<Collection>;
   /** Exporta un entorno (pide destino); los secretos salen vacíos. Devuelve la ruta o null si se cancela. */
@@ -119,6 +121,7 @@ async function tauriApi(): Promise<Api> {
     listFolders: (root) => invoke<string[]>("list_folders", { root }),
     saveFolderVars: (root, folder, vars, secrets) => col("save_folder_vars", { root, folder, vars, secrets: secrets ?? null }),
     saveFolderSettings: (root, folder, { headers, auth, scripts }) => col("save_folder_settings", { root, folder, headers, auth, scripts }),
+    setFolderColor: (root, folder, color) => col("set_folder_color", { root, folder, color }),
     exportEnvironment: async (root, name, format) => {
       const { save } = await import("@tauri-apps/plugin-dialog");
       const path = await save({
@@ -336,6 +339,10 @@ function mockApi(): Api {
     gitInit: async () => { git = { available: true, initialized: true, branch: "main" }; return { ...git }; },
     saveFolderVars: async (_root, folder, vars, secrets) => {
       col.folder_configs[folder] = { ...emptyFolderConfig(), ...col.folder_configs[folder], vars: structuredClone(vars), secrets: secrets ?? col.folder_configs[folder]?.secrets ?? [] };
+      return snapshot();
+    },
+    setFolderColor: async (_root, folder, color) => {
+      col.folder_configs[folder] = { ...emptyFolderConfig(), ...col.folder_configs[folder], color };
       return snapshot();
     },
     saveFolderSettings: async (_root, folder, settings) => {

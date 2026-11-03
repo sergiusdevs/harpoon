@@ -54,8 +54,23 @@ pub struct FolderConfig {
     /// Scripts que se ejecutan entre los de la colección y los de la solicitud.
     #[serde(default, skip_serializing_if = "Scripts::is_empty")]
     pub scripts: Scripts,
+    /// Color de la carpeta en la app: uno de [`FOLDER_COLORS`] o `#rrggbb`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     #[serde(flatten)]
     pub other: IndexMap<String, toml::Value>,
+}
+
+/// Colores con nombre para carpetas (la app los adapta a cada tema).
+pub const FOLDER_COLORS: [&str; 9] = [
+    "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "gray",
+];
+
+fn valid_color(color: &str) -> bool {
+    FOLDER_COLORS.contains(&color)
+        || (color.len() == 7
+            && color.starts_with('#')
+            && color[1..].chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 fn is_inherit(auth: &Auth) -> bool {
@@ -611,6 +626,31 @@ impl Collection {
             out.auth = config.auth.clone();
         }
         out
+    }
+
+    /// Cambia (o quita, con `None`) el color de una carpeta.
+    pub fn set_folder_color(&mut self, folder: &str, color: Option<String>) -> Result<()> {
+        let folder = validate_key(folder)?;
+        let color = color
+            .map(|c| c.trim().to_lowercase())
+            .filter(|c| !c.is_empty());
+        if let Some(c) = color.as_deref().filter(|c| !valid_color(c)) {
+            return Err(Error::Io {
+                path: folder.into(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "color no válido `{c}`: usa {} o #rrggbb",
+                        FOLDER_COLORS.join(", ")
+                    ),
+                ),
+            });
+        }
+        let mut config = self.folder_configs.get(folder).cloned().unwrap_or_default();
+        config.color = color;
+        let (vars, secrets) = (config.vars.clone(), config.secrets.clone());
+        self.folder_configs.insert(folder.to_owned(), config);
+        self.save_folder_config(folder, vars, secrets)
     }
 
     /// Guarda cabeceras, auth y scripts de una carpeta conservando sus variables.

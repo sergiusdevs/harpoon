@@ -138,7 +138,7 @@ GitHub, One Dark, Kanagawa y Tokyo Night) y modo automático que sigue al sistem
 - Árbol de la colección con arrastrar y soltar, menú contextual, búsqueda global (`⌘K`) y teclado completo.
 - Pestañas de solicitudes con borradores independientes y aviso de cambios sin guardar.
 - Selector de entornos con buscador y estado de Git de la colección en la barra de título.
-- Ajustes por carpeta (variables, cabeceras, auth y scripts) con lo heredado a la vista.
+- Ajustes por carpeta (variables, cabeceras, auth y scripts) con lo heredado a la vista, y color propio para cada carpeta.
 - Cabeceras heredadas y del runtime visibles en cada solicitud; edición en bloque con `Nombre: valor`.
 - Autocompletado de `{{variables}}` con su origen y aviso de las que no existen, también al crear solicitudes.
 - Generar código en 7 lenguajes y validar la colección desde su menú.

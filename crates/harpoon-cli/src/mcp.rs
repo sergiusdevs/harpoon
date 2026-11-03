@@ -239,6 +239,9 @@ fn save_folder(mut c: Collection, args: &Value) -> anyhow::Result<Value> {
             current.scripts.clone(),
         )?;
     }
+    if let Some(color) = args["color"].as_str() {
+        c.set_folder_color(&folder, Some(color.to_owned()))?;
+    }
     let c = Collection::load(&c.root)?;
     Ok(json!({
         "saved": format!("requests/{folder}/folder.toml"),
@@ -372,7 +375,8 @@ fn tools(allow_write: bool) -> Value {
                 "inputSchema": {"type": "object", "properties": {
                     "folder": {"type": "string", "description": "Ruta de la carpeta, p. ej. `rick-and-morty/characters`"},
                     "vars": pairs.clone(),
-                    "headers": pairs.clone()
+                    "headers": pairs.clone(),
+                    "color": {"type": "string", "description": "Color en la app: red, orange, yellow, green, teal, blue, purple, pink, gray o #rrggbb"}
                 }, "required": ["folder"]},
                 "annotations": write.clone(),
             }),

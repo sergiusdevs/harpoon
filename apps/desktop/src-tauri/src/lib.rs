@@ -229,6 +229,18 @@ fn save_folder_vars(
 }
 
 #[tauri::command]
+fn set_folder_color(
+    root: PathBuf,
+    folder: String,
+    color: Option<String>,
+) -> Result<CollectionDto, String> {
+    let mut col = load(&root)?;
+    col.set_folder_color(&folder, color)
+        .map_err(|e| e.to_string())?;
+    Ok(col.into())
+}
+
+#[tauri::command]
 fn save_folder_settings(
     root: PathBuf,
     folder: String,
@@ -822,6 +834,7 @@ pub fn run() {
             devtools::devtools_clear,
             save_folder_vars,
             save_folder_settings,
+            set_folder_color,
             validate_collection,
             resolve_url,
             save_environment,

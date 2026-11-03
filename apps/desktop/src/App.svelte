@@ -28,6 +28,7 @@
   import SecretFindings from "./components/secrets/SecretFindings.svelte";
   import MissingSecrets from "./components/secrets/MissingSecrets.svelte";
   import ValidationReport from "./components/collection/ValidationReport.svelte";
+  import FolderColor from "./components/collection/FolderColor.svelte";
   import MissingIndicator from "./components/secrets/MissingIndicator.svelte";
 
   let sidebarW = $state(250);
@@ -122,6 +123,8 @@
 <Dialog />
 {#if store.modal === "secret-findings" && store.secretFindings}
   <SecretFindings />
+{:else if store.modal === "folder-color" && store.collection}
+  <FolderColor />
 {:else if store.modal === "validate" && store.collection}
   <ValidationReport />
 {:else if store.modal === "missing-secrets" && store.collection}

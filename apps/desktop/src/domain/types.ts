@@ -172,6 +172,8 @@ export interface FolderConfig {
   /** `inherit` usa la auth de la carpeta superior o de la colección. */
   auth: Auth;
   scripts: Scripts;
+  /** Color en el árbol: nombre de la paleta (`blue`…) o `#rrggbb`. */
+  color?: string | null;
 }
 
 export function emptyFolderConfig(): FolderConfig {

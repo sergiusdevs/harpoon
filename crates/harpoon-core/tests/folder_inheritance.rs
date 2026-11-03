@@ -121,3 +121,28 @@ fn el_detector_revisa_la_configuracion_de_carpeta() {
         "{findings:?}"
     );
 }
+
+#[test]
+fn color_de_carpeta_en_folder_toml() {
+    let (temp, mut col) = collection();
+    col.set_folder_color("api", Some("Teal".into())).unwrap();
+    col.set_folder_color("api/admin", Some("#ff8800".into()))
+        .unwrap();
+    assert!(col.set_folder_color("api", Some("fucsia".into())).is_err());
+    assert!(col.set_folder_color("api", Some("#12345".into())).is_err());
+
+    let text = std::fs::read_to_string(temp.path().join("requests/api/folder.toml")).unwrap();
+    assert!(text.contains("color = \"teal\""), "{text}");
+    assert!(text.contains("[headers]"), "conserva el resto: {text}");
+    let col = Collection::load(temp.path()).unwrap();
+    assert_eq!(col.folder_configs["api"].color.as_deref(), Some("teal"));
+    assert_eq!(
+        col.folder_configs["api/admin"].color.as_deref(),
+        Some("#ff8800")
+    );
+
+    let mut col = col;
+    col.set_folder_color("api", None).unwrap();
+    let text = std::fs::read_to_string(temp.path().join("requests/api/folder.toml")).unwrap();
+    assert!(!text.contains("color"), "{text}");
+}

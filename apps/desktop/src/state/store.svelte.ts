@@ -52,7 +52,7 @@ class Store {
   runtimeVariables = $state<Record<string, string>>({});
   /** Entrada del historial que se está viendo (null = respuesta en vivo). */
   viewingHistory = $state<HistoryEntry | null>(null);
-  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | "search" | "stream" | "mock" | "secret-findings" | "missing-secrets" | "validate" | null>(null);
+  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | "search" | "stream" | "mock" | "secret-findings" | "missing-secrets" | "validate" | "folder-color" | null>(null);
   /** Posibles secretos detectados al guardar la solicitud abierta (modal "secret-findings"). */
   secretFindings = $state<{ key: string; findings: SecretFinding[] } | null>(null);
   /** Secretos declarados sin valor en esta máquina para el entorno activo. */
@@ -668,6 +668,11 @@ class Store {
     await this.adopt(col);
   }
 
+  async setFolderColor(folder: string, color: string | null) {
+    if (!this.collection) return;
+    await this.run(async () => { await this.adopt(await (await api).setFolderColor(this.collection!.root, folder, color)); });
+  }
+
   async saveFolderSettings(folder: string, settings: Pick<FolderConfig, "headers" | "auth" | "scripts">) {
     const col = await (await api).saveFolderSettings(this.collection!.root, folder, settings);
     await this.adopt(col);
@@ -767,6 +772,13 @@ class Store {
     }
   }
   private followingSystem = false;
+
+  /** Claro u oscuro según el tema aplicado (para colores que dependen del fondo). */
+  get themeKind(): "dark" | "light" {
+    const prefersDark = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)").matches : true;
+    const id = resolveTheme(this.theme, prefersDark);
+    return themes.find((t) => t.id === id)?.kind === "light" ? "light" : "dark";
+  }
 
   setTheme(theme: Theme) {
     this.theme = theme;

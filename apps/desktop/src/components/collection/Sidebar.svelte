@@ -4,6 +4,7 @@
   import ContextMenu, { type Item } from "../common/ContextMenu.svelte";
   import Icon from "../common/Icon.svelte";
   import { requestType } from "../../domain/types";
+  import { folderColor } from "../../domain/folderColors";
 
   let filter = $state("");
   let filterInput = $state<HTMLInputElement | null>(null);
@@ -165,6 +166,7 @@
     { label: "Renombrar / mover", icon: "pencil", shortcut: "r", action: () => store.renameRequest(key) },
     { label: "Eliminar", icon: "x", action: () => store.deleteRequest(key), sep: true },
   ];
+  const folderTint = (path: string) => folderColor(store.collection?.folder_configs[path]?.color, store.themeKind);
   const folderMenu = (path: string): Item[] => [
     { label: "Nueva solicitud", icon: "file-plus", shortcut: "n", action: () => store.newRequest(path) },
     { label: "Nueva carpeta", icon: "folder-plus", action: () => store.newFolder(path) },
@@ -173,7 +175,8 @@
     { label: "Renombrar", icon: "pencil", shortcut: "r", action: () => store.renameFolder(path) },
     { label: "Plegar", icon: "collapse", action: () => collapseAll(path) },
     { label: "Mostrar en Finder", icon: "reveal", action: () => store.revealFolder(path) },
-    { label: "Ajustes", icon: "settings", sep: true, action: () => { store.editingFolder = path; store.modal = "folder"; } },
+    { label: "Color…", icon: "folder", sep: true, action: () => { store.editingFolder = path; store.modal = "folder-color"; } },
+    { label: "Ajustes", icon: "settings", action: () => { store.editingFolder = path; store.modal = "folder"; } },
     { label: "Abrir en Terminal", icon: "terminal", shortcut: "t", action: () => store.openTerminal(path) },
     { label: "Eliminar", icon: "x", action: () => store.deleteFolder(path) },
   ];
@@ -315,7 +318,7 @@
         ondrop={(e) => drop(e, n.path)}
       >
         {@render guides(depth)}
-        <span class="ficon" class:open={isOpen(n.path)}><Icon name={isOpen(n.path) ? "folder-open" : "folder"} size={16} /></span>
+        <span class="ficon" class:open={isOpen(n.path)} class:tinted={!!folderTint(n.path)} style:--folder-color={folderTint(n.path)}><Icon name={isOpen(n.path) ? "folder-open" : "folder"} size={16} /></span>
         <span class="fname">{@render hl(n.name)}</span>
         <button class="more" class:open={menu?.owner === n.path} tabindex="-1" title="Más acciones" aria-label="Más acciones de {n.name}" onclick={(e) => openMenuAt(e, folderMenu(n.path), n.path)}><Icon name="dots" size={16} /></button>
       </div>
@@ -640,6 +643,12 @@
     display: inline-flex;
     flex: 0 0 auto;
     color: var(--text-muted);
+  }
+  .ficon.tinted {
+    color: var(--folder-color);
+  }
+  .ficon.tinted :global(svg) {
+    fill: color-mix(in srgb, var(--folder-color) 22%, transparent);
   }
   .name {
     flex: 1;

@@ -192,6 +192,10 @@ test = 'test("no es 5xx", () => expect(harpoon.res.status).to.be.below(500));'
 - **Scripts:** se ejecutan entre los de la colección y los de la solicitud,
   de la carpeta más externa a la más interna (ver [scripting](scripting.md)).
 
+Una carpeta también puede tener `color = "teal"` (o `red`, `orange`, `yellow`,
+`green`, `blue`, `purple`, `pink`, `gray`, o `#rrggbb`) para distinguirla en el árbol
+de la app; se elige desde su menú contextual → **Color…**.
+
 `folder.toml` se versiona con la colección: usa `{{variables}}` y guarda los
 valores reales como secretos. `harpoon check` también revisa estos archivos. En la
 app se edita desde el menú contextual de la carpeta → **Ajustes**.
