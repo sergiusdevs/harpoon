@@ -6,7 +6,7 @@ escritorio, en la terminal y en CI.
 
 Sin cuenta. Sin nube. Sin telemetría.
 
-<a href="https://paypal.me/sergyvegas"><img src="https://img.shields.io/badge/PayPal-donar-00457C?style=for-the-badge&logo=paypal&logoColor=fff" alt="Donar con PayPal"></a>
+<a href="https://paypal.me/sergyvegas"><img src="https://img.shields.io/badge/%E2%98%95%20Buy%20me%20a%20coffee-ffdd00?style=for-the-badge&logo=paypal&logoColor=000" alt="Buy me a coffee (PayPal)"></a>
 
 ![Harpoon](docs/img/desktop.png)
 
@@ -151,7 +151,7 @@ El CI ejecuta todo lo anterior en Linux, macOS y Windows.
 
 Harpoon es gratuito y de código abierto. Si te ahorra tiempo, puedes invitarme a un café ☕
 
-<a href="https://paypal.me/sergyvegas"><img src="https://img.shields.io/badge/Donar%20con%20PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=fff" alt="Donar con PayPal" height="48"></a>
+<a href="https://paypal.me/sergyvegas"><img src="https://img.shields.io/badge/%E2%98%95%20Buy%20me%20a%20coffee-ffdd00?style=for-the-badge&logo=paypal&logoColor=000" alt="Buy me a coffee (PayPal)" height="48"></a>
 
 ## Licencia
 
