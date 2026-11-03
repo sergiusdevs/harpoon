@@ -19,6 +19,9 @@ pub struct Preview {
     folders: Vec<String>,
     #[serde(skip)]
     vars: IndexMap<String, String>,
+    /// Variables de tipo `secret` en Postman: se importan como secretas.
+    #[serde(skip)]
+    secrets: Vec<String>,
     #[serde(skip)]
     auth: Auth,
     #[serde(skip)]
@@ -372,9 +375,22 @@ pub(crate) fn parse(v: &Value) -> Result<Preview> {
         requests: Vec::new(),
         folders: Vec::new(),
         vars: fields(&v["variable"]),
+        secrets: v["variable"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|x| x["type"] == "secret" && x["disabled"] != true)
+            .filter_map(|x| x["key"].as_str().map(str::to_owned))
+            .collect(),
         auth: Auth::None,
         scripts: Scripts::default(),
     };
+    if !p.secrets.is_empty() {
+        p.warnings.push(format!(
+            "Variables secretas ({}): se guardan fuera de Git, en este equipo",
+            p.secrets.join(", ")
+        ));
+    }
     if v["variable"]
         .as_array()
         .is_some_and(|vars| vars.iter().any(|var| var["disabled"] == true))
@@ -399,6 +415,7 @@ pub fn import(p: &Preview, target: &Path) -> Result<Collection> {
         let mut meta = c.meta.clone();
         meta.default_environment = None;
         meta.vars.clone_from(&p.vars);
+        meta.secrets.clone_from(&p.secrets);
         meta.auth = p.auth.clone();
         meta.scripts = p.scripts.clone();
         c.save_meta(meta)?;
@@ -628,12 +645,23 @@ pub fn export(c: &Collection) -> (Value, Vec<String>) {
     if c.meta.settings != crate::Settings::default() {
         warnings.push("Los ajustes de conexión no se exportan a Postman".into());
     }
+    // Los secretos se exportan sin valor (tipo `secret` en Postman).
     let variables: Vec<_> = c
         .meta
         .vars
         .iter()
-        .map(|(k, v)| json!({"key":k,"value":v,"type":"string"}))
+        .map(|(k, v)| {
+            if c.meta.secrets.contains(k) {
+                json!({"key":k,"value":"","type":"secret"})
+            } else {
+                json!({"key":k,"value":v,"type":"string"})
+            }
+        })
         .collect();
+    if !c.meta.secrets.is_empty() {
+        warnings.push("Las variables secretas se exportan sin valor".into());
+    }
+    warnings.extend(crate::scan::export_warnings(c));
     let a = post_auth(&c.meta.auth, &mut warnings, "Colección");
     let e = events(&c.meta.scripts, &mut warnings, "Colección");
     let mut out = json!({"info":{"name":c.meta.name,"schema":SCHEMA},"item":items,"variable":variables,"event":e});

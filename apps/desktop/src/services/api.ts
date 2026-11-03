@@ -1,13 +1,14 @@
 // Puente con el backend. Dentro de Tauri usa `invoke`; en un navegador
 // normal (desarrollo de la UI, capturas) usa un mock con la colección de ejemplo.
 
-import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, Outcome, Request, StoredCookie } from "../domain/types";
+import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, MissingSecret, Outcome, Request, SecretFinding, SecretScope, StoredCookie } from "../domain/types";
 import type { CurlPrepared } from "../domain/curlExport";
 import { folderChain } from "../domain/paths";
 export { folderChain } from "../domain/paths";
 import { emptyRequest, enabledHeaders, normalizeCollection } from "../domain/types";
 
 export interface SharePreview { name: string; warnings: string[] }
+export interface EnvironmentPreview { name: string; variables: number; secrets: string[]; warnings: string[] }
 export type { StreamEvent } from "../domain/streamSessions";
 import type { StreamEvent } from "../domain/streamSessions";
 export interface MockRoute { enabled: boolean; method: import("../domain/types").Method; path: string; status: number; headers: Record<string, string>; body: string }
@@ -25,8 +26,26 @@ export interface Api {
   createFolder(root: string, folder: string): Promise<Collection>;
   renameFolder(root: string, from: string, to: string): Promise<Collection>;
   deleteFolder(root: string, folder: string): Promise<Collection>;
+  /** Muestra la carpeta en Finder / Explorer (`""` = raíz de la colección). */
+  revealFolder(root: string, folder: string): Promise<void>;
+  /** Abre una terminal del sistema en la carpeta. */
+  openTerminal(root: string, folder: string): Promise<void>;
   listFolders(root: string): Promise<string[]>;
-  saveFolderVars(root: string, folder: string, vars: Record<string, string>): Promise<Collection>;
+  saveFolderVars(root: string, folder: string, vars: Record<string, string>, secrets?: string[]): Promise<Collection>;
+  /** Exporta un entorno (pide destino); los secretos salen vacíos. Devuelve la ruta o null si se cancela. */
+  exportEnvironment(root: string, name: string, format: "postman" | "harpoon"): Promise<string | null>;
+  /** Lee un entorno de Postman (JSON) o Harpoon (TOML) sin guardarlo. */
+  previewEnvironment(path: string): Promise<EnvironmentPreview>;
+  /** Importa un entorno con ese nombre (no sobrescribe). */
+  importEnvironment(root: string, path: string, name: string): Promise<Collection>;
+  /** Posibles secretos en los archivos versionados de la colección. */
+  scanSecrets(root: string): Promise<SecretFinding[]>;
+  /** Posibles secretos en una solicitud (antes de guardarla). */
+  scanRequest(key: string, request: Request): Promise<SecretFinding[]>;
+  /** Secretos declarados sin valor en esta máquina. */
+  missingSecrets(root: string, env: string | null): Promise<MissingSecret[]>;
+  /** Guarda una variable como secreta (valor local, solo el nombre en Git). */
+  setSecret(root: string, scope: SecretScope, name: string, value: string): Promise<Collection>;
   resolveUrl(root: string, key: string, env: string | null, url: string): Promise<string>;
   saveEnvironment(root: string, name: string, env: Environment): Promise<Collection>;
   deleteEnvironment(root: string, name: string): Promise<Collection>;
@@ -84,8 +103,27 @@ async function tauriApi(): Promise<Api> {
     createFolder: (root, folder) => col("create_folder", { root, folder }),
     renameFolder: (root, from, to) => col("rename_folder", { root, from, to }),
     deleteFolder: (root, folder) => col("delete_folder", { root, folder }),
+    revealFolder: (root, folder) => invoke("reveal_folder", { root, folder }),
+    openTerminal: (root, folder) => invoke("open_terminal", { root, folder }),
     listFolders: (root) => invoke<string[]>("list_folders", { root }),
-    saveFolderVars: (root, folder, vars) => col("save_folder_vars", { root, folder, vars }),
+    saveFolderVars: (root, folder, vars, secrets) => col("save_folder_vars", { root, folder, vars, secrets: secrets ?? null }),
+    exportEnvironment: async (root, name, format) => {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({
+        title: "Exportar entorno",
+        defaultPath: format === "postman" ? `${name}.postman_environment.json` : `${name}.toml`,
+        filters: format === "postman" ? [{ name: "Entorno Postman", extensions: ["json"] }] : [{ name: "Entorno Harpoon", extensions: ["toml"] }],
+      });
+      if (!path) return null;
+      await invoke("export_environment", { root, name, path, format });
+      return path;
+    },
+    previewEnvironment: (path) => invoke<EnvironmentPreview>("preview_environment", { path }),
+    importEnvironment: (root, path, name) => col("import_environment", { root, path, name }),
+    scanSecrets: (root) => invoke<SecretFinding[]>("scan_secrets", { root }),
+    scanRequest: (key, request) => invoke<SecretFinding[]>("scan_request", { key, request }),
+    missingSecrets: (root, env) => invoke<MissingSecret[]>("missing_secrets", { root, env }),
+    setSecret: (root, scope, name, value) => col("set_secret", { root, scope, name, value }),
     resolveUrl: (root, key, env, url) => invoke<string>("resolve_url", { root, key, env, url }),
     saveEnvironment: (root, name, env) => col("save_environment", { root, name, env }),
     deleteEnvironment: (root, name) => col("delete_environment", { root, name }),
@@ -137,6 +175,27 @@ async function tauriApi(): Promise<Api> {
   };
 }
 
+const envVar = (name: string) => "HARPOON_" + name.replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
+const SENSITIVE = /^(authorization|proxy-?authorization|cookie|auth|pwd|pass)$|password|passwd|secret|token|api-?_?key|access-?_?key|private-?_?key|credential|signature|session-?_?id/i;
+function mockScan(key: string, request: Request): SecretFinding[] {
+  const file = `requests/${key}.toml`;
+  const literal = (v: string) => v.replace(/\{\{[^}]*\}\}/g, "").replace(/^\s*(Bearer|Basic|Token)\s+/i, "").trim();
+  const preview = (v: string) => `${v.slice(0, 4)}…(${v.length})`;
+  const suggestion = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "secret";
+  const out: SecretFinding[] = [];
+  const check = (location: string, name: string, value: string) => {
+    const lit = literal(value);
+    if (SENSITIVE.test(name) && lit.length >= 6) out.push({ file, location, kind: "valor literal en un campo sensible", preview: preview(lit), suggestion: suggestion(name) });
+  };
+  for (const [k, v] of Object.entries(request.headers)) check(`header ${k}`, k, v);
+  for (const [k, v] of Object.entries(request.query)) check(`parámetro ${k}`, k, v);
+  const a = request.auth as unknown as Record<string, string>;
+  if (a.type === "bearer") check("auth.token", "token", a.token ?? "");
+  if (a.type === "basic" || a.type === "digest") check("auth.password", "password", a.password ?? "");
+  if (a.type === "api_key") check("auth.value", a.key || "api_key", a.value ?? "");
+  return out;
+}
+
 function mockApi(): Api {
   const cancellations = new Map<string, () => void>();
   const col: Collection = {
@@ -146,6 +205,7 @@ function mockApi(): Api {
       name: "Petstore",
       format: 1,
       default_environment: "dev",
+      secrets: [],
       vars: { api_version: "v2" },
       auth: { type: "api_key", key: "api_key", value: "{{api_key}}", in: "header" },
       settings: { timeout_ms: 30000, follow_redirects: true, insecure: false },
@@ -256,8 +316,33 @@ function mockApi(): Api {
       return snapshot();
     },
     listFolders: async () => [...folders].sort(),
-    saveFolderVars: async (_root, folder, vars) => {
-      col.folder_configs[folder] = { vars: structuredClone(vars) };
+    revealFolder: async () => { throw new Error("Solo disponible en la app de escritorio"); },
+    openTerminal: async () => { throw new Error("Solo disponible en la app de escritorio"); },
+    saveFolderVars: async (_root, folder, vars, secrets) => {
+      col.folder_configs[folder] = { vars: structuredClone(vars), secrets: secrets ?? col.folder_configs[folder]?.secrets ?? [] };
+      return snapshot();
+    },
+    exportEnvironment: async () => { throw new Error("Solo disponible en la app de escritorio"); },
+    previewEnvironment: async () => { throw new Error("Solo disponible en la app de escritorio"); },
+    importEnvironment: async () => { throw new Error("Solo disponible en la app de escritorio"); },
+    // Versión reducida del detector de Rust (harpoon_core::scan), solo para la demo.
+    scanSecrets: async () => Object.entries(col.requests).flatMap(([key, request]) => mockScan(key, request)),
+    scanRequest: async (key, request) => mockScan(key, request),
+    missingSecrets: async (_root, env) => {
+      const out: MissingSecret[] = [];
+      const empty = (vars: Record<string, string>, name: string) => !vars[name];
+      for (const name of col.meta.secrets ?? []) if (empty(col.meta.vars, name)) out.push({ scope: "collection", owner: "", name, env_var: envVar(name) });
+      for (const [path, cfg] of Object.entries(col.folder_configs)) for (const name of cfg.secrets ?? []) if (empty(cfg.vars, name)) out.push({ scope: "folder", owner: path, name, env_var: envVar(name) });
+      const envName = env ?? col.meta.default_environment;
+      const e = envName ? col.environments[envName] : undefined;
+      if (envName && e) for (const name of e.secrets) if (empty(e.vars, name)) out.push({ scope: "environment", owner: envName, name, env_var: envVar(name) });
+      return out;
+    },
+    setSecret: async (_root, scope, name, value) => {
+      const add = (list: string[]) => (list.includes(name) ? list : [...list, name]);
+      if (scope.kind === "collection") { col.meta.vars[name] = value; col.meta.secrets = add(col.meta.secrets ?? []); }
+      else if (scope.kind === "folder") { const cfg = col.folder_configs[scope.path] ?? { vars: {}, secrets: [] }; cfg.vars[name] = value; cfg.secrets = add(cfg.secrets ?? []); col.folder_configs[scope.path] = cfg; }
+      else { const e = col.environments[scope.name]; if (!e) throw new Error(`No existe el entorno ${scope.name}`); e.vars[name] = value; e.secrets = add(e.secrets); }
       return snapshot();
     },
     resolveUrl: async (_root, key, env, url) => {

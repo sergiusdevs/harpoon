@@ -153,6 +153,7 @@ Las variables de ejecución se guardan en `.harpoon/vars.toml` (fuera de Git).
 | [docs/format.md](docs/format.md) | Formato de colección: `harpoon.toml`, entornos, solicitudes, variables |
 | [docs/scripting.md](docs/scripting.md) | API de scripts (`harpoon.req/res/vars`), `test`, `expect`, orden de ejecución |
 | [docs/auth.md](docs/auth.md) | Basic, Bearer, API key, Digest, OAuth2, mTLS, uso en CI |
+| [docs/secrets.md](docs/secrets.md) | Secretos y Git: dónde vive cada valor, `HARPOON_<NOMBRE>`, `harpoon check` |
 | [docs/adr/001-offline.md](docs/adr/001-offline.md) | Por qué y cómo Harpoon es 100 % offline |
 | [ROADMAP.md](ROADMAP.md) | Plan detallado por fases |
 

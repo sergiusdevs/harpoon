@@ -42,6 +42,9 @@ struct RuntimeVarsFile {
 pub struct FolderConfig {
     #[serde(default)]
     pub vars: IndexMap<String, String>,
+    /// Variables de carpeta secretas (valor en `.harpoon/secrets.toml`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secrets: Vec<String>,
     #[serde(flatten)]
     pub other: IndexMap<String, toml::Value>,
 }
@@ -75,7 +78,7 @@ impl Collection {
         let meta: CollectionMeta = read_toml(&root.join(META_FILE))?;
 
         let mut requests = IndexMap::new();
-        let mut folder_configs = IndexMap::new();
+        let mut folder_configs: IndexMap<String, FolderConfig> = IndexMap::new();
         let req_dir = root.join(REQUESTS_DIR);
         if req_dir.is_dir() {
             for entry in WalkDir::new(&req_dir)
@@ -149,6 +152,24 @@ impl Collection {
             }
         }
 
+        // Valores de los secretos de colección y carpetas (archivo local).
+        let mut meta = meta;
+        let local = read_local_secrets(root)?;
+        for name in &meta.secrets {
+            if let Some(value) = local.collection.get(name) {
+                meta.vars.insert(name.clone(), value.clone());
+            }
+        }
+        for (folder, config) in &mut folder_configs {
+            if let Some(values) = local.folders.get(folder) {
+                for name in &config.secrets {
+                    if let Some(value) = values.get(name) {
+                        config.vars.insert(name.clone(), value.clone());
+                    }
+                }
+            }
+        }
+
         Ok(Self {
             root: root.to_path_buf(),
             meta,
@@ -158,6 +179,95 @@ impl Collection {
         })
     }
 
+    /// Guarda en `.harpoon/secrets.toml` los valores secretos actuales de
+    /// colección y carpetas (y asegura los `.gitignore` anidados).
+    fn write_local_secrets(&self) -> Result<()> {
+        let mut local = crate::secrets::LocalSecrets::default();
+        for name in &self.meta.secrets {
+            if let Some(value) = self.meta.vars.get(name).filter(|v| !v.is_empty()) {
+                local.collection.insert(name.clone(), value.clone());
+            }
+        }
+        for (folder, config) in &self.folder_configs {
+            let values: IndexMap<String, String> = config
+                .secrets
+                .iter()
+                .filter_map(|n| {
+                    config
+                        .vars
+                        .get(n)
+                        .filter(|v| !v.is_empty())
+                        .map(|v| (n.clone(), v.clone()))
+                })
+                .collect();
+            if !values.is_empty() {
+                local.folders.insert(folder.clone(), values);
+            }
+        }
+        let path = self.root.join(STATE_DIR).join(crate::secrets::LOCAL_FILE);
+        if local.is_empty() {
+            if path.exists() {
+                remove_file(&path)?;
+            }
+        } else {
+            write_toml(&path, &local)?;
+        }
+        crate::secrets::ensure_gitignores(&self.root)
+    }
+
+    /// Asegura los `.gitignore` anidados (llamar al abrir la colección).
+    pub fn ensure_gitignores(&self) -> Result<()> {
+        crate::secrets::ensure_gitignores(&self.root)
+    }
+
+    /// Secretos declarados que no tienen valor en esta máquina, ni en los
+    /// archivos locales ni en `HARPOON_<NOMBRE>`.
+    #[must_use]
+    pub fn missing_secrets(&self, environment: Option<&str>) -> Vec<crate::secrets::MissingSecret> {
+        use crate::secrets::{MissingSecret, env_var_name, from_process_env};
+        let missing = |vars: &IndexMap<String, String>, name: &str| {
+            vars.get(name).is_none_or(String::is_empty) && from_process_env(name).is_none()
+        };
+        let mut out = Vec::new();
+        for name in &self.meta.secrets {
+            if missing(&self.meta.vars, name) {
+                out.push(MissingSecret {
+                    scope: "collection",
+                    owner: String::new(),
+                    name: name.clone(),
+                    env_var: env_var_name(name),
+                });
+            }
+        }
+        for (folder, config) in &self.folder_configs {
+            for name in &config.secrets {
+                if missing(&config.vars, name) {
+                    out.push(MissingSecret {
+                        scope: "folder",
+                        owner: folder.clone(),
+                        name: name.clone(),
+                        env_var: env_var_name(name),
+                    });
+                }
+            }
+        }
+        if let Some(env_name) = environment.or(self.meta.default_environment.as_deref())
+            && let Some(env) = self.environments.get(env_name)
+        {
+            for name in &env.secrets {
+                if missing(&env.vars, name) {
+                    out.push(MissingSecret {
+                        scope: "environment",
+                        owner: env_name.to_owned(),
+                        name: name.clone(),
+                        env_var: env_var_name(name),
+                    });
+                }
+            }
+        }
+        out
+    }
+
     /// Crea en disco una colección vacía con un ejemplo.
     pub fn init(root: &Path, name: &str) -> Result<Self> {
         let meta = CollectionMeta {
@@ -165,6 +275,7 @@ impl Collection {
             format: 1,
             default_environment: Some("dev".into()),
             vars: IndexMap::new(),
+            secrets: Vec::new(),
             auth: crate::Auth::None,
             settings: crate::Settings::default(),
             scripts: crate::model::Scripts::default(),
@@ -183,6 +294,11 @@ impl Collection {
         req.docs = "Comprueba que el servicio responde.".into();
         write_toml(&root.join(REQUESTS_DIR).join("health.toml"), &req)?;
 
+        std::fs::create_dir_all(root.join(STATE_DIR)).map_err(|source| Error::Io {
+            path: root.join(STATE_DIR),
+            source,
+        })?;
+        crate::secrets::ensure_gitignores(root)?;
         let gitignore = root.join(".gitignore");
         if !gitignore.exists() {
             write_file(
@@ -279,7 +395,7 @@ impl Collection {
         self.folder_configs
             .retain(|k, _| k != from && !k.starts_with(&prefix));
         self.folder_configs.extend(moved_configs);
-        Ok(())
+        self.write_local_secrets()
     }
 
     /// Elimina una carpeta con todo su contenido.
@@ -295,7 +411,7 @@ impl Collection {
         self.requests.retain(|k, _| !k.starts_with(&prefix));
         self.folder_configs
             .retain(|k, _| k != folder && !k.starts_with(&prefix));
-        Ok(())
+        self.write_local_secrets()
     }
 
     /// Guarda un entorno. Las variables listadas en `secrets` van a
@@ -336,7 +452,7 @@ impl Collection {
         }
         self.environments.insert(name.to_owned(), env);
         self.environments.sort_keys();
-        Ok(())
+        crate::secrets::ensure_gitignores(&self.root)
     }
 
     /// Elimina un entorno (y su archivo de secretos si existe).
@@ -357,10 +473,14 @@ impl Collection {
     }
 
     /// Guarda `harpoon.toml`.
+    /// Guarda `harpoon.toml`. Las variables listadas en `meta.secrets` no se
+    /// escriben ahí sino en `.harpoon/secrets.toml`.
     pub fn save_meta(&mut self, meta: CollectionMeta) -> Result<()> {
-        write_toml(&self.root.join(META_FILE), &meta)?;
+        let mut public = meta.clone();
+        public.vars.retain(|k, _| !meta.secrets.contains(k));
+        write_toml(&self.root.join(META_FILE), &public)?;
         self.meta = meta;
-        Ok(())
+        self.write_local_secrets()
     }
 
     /// Variables de ejecución (las que fijan los scripts con `harpoon.vars.set`).
@@ -378,7 +498,8 @@ impl Collection {
 
     pub fn save_runtime_vars(&self, vars: &IndexMap<String, String>) -> Result<()> {
         let path = self.root.join(STATE_DIR).join("vars.toml");
-        write_toml(&path, &RuntimeVarsFile { vars: vars.clone() })
+        write_toml(&path, &RuntimeVarsFile { vars: vars.clone() })?;
+        crate::secrets::ensure_gitignores(&self.root)
     }
 
     fn request_path(&self, key: &str) -> PathBuf {
@@ -391,6 +512,21 @@ impl Collection {
 
     /// Guarda variables de una carpeta sin eliminar otras secciones de su configuración.
     pub fn save_folder_vars(&mut self, folder: &str, vars: IndexMap<String, String>) -> Result<()> {
+        let secrets = self
+            .folder_configs
+            .get(folder)
+            .map(|c| c.secrets.clone())
+            .unwrap_or_default();
+        self.save_folder_config(folder, vars, secrets)
+    }
+
+    /// Guarda las variables de una carpeta; las de `secrets` van al archivo local.
+    pub fn save_folder_config(
+        &mut self,
+        folder: &str,
+        vars: IndexMap<String, String>,
+        secrets: Vec<String>,
+    ) -> Result<()> {
         let folder = validate_key(folder)?;
         let dir = self.root.join(REQUESTS_DIR).join(folder);
         if !dir.is_dir() {
@@ -405,14 +541,19 @@ impl Collection {
         }
         let mut config = self.folder_configs.get(folder).cloned().unwrap_or_default();
         config.vars = vars;
-        write_toml(&dir.join("folder.toml"), &config)?;
+        config.secrets = secrets;
+        let mut public = config.clone();
+        public.vars.retain(|k, _| !config.secrets.contains(k));
+        write_toml(&dir.join("folder.toml"), &public)?;
         self.folder_configs.insert(folder.to_owned(), config);
-        Ok(())
+        self.write_local_secrets()
     }
 
     /// Construye el ámbito para una solicitud, con las carpetas entre colección y entorno.
     pub fn scope_for_request(&self, environment: Option<&str>, key: &str) -> Result<Scope> {
-        let mut scope = Scope::new().with_layer(self.meta.vars.clone());
+        use crate::secrets::with_env_fallback;
+        let mut scope =
+            Scope::new().with_layer(with_env_fallback(&self.meta.vars, &self.meta.secrets));
         let mut folder = String::new();
         let mut parts = key.split('/').peekable();
         while let Some(part) = parts.next() {
@@ -424,7 +565,7 @@ impl Collection {
             }
             folder.push_str(part);
             if let Some(config) = self.folder_configs.get(&folder) {
-                scope = scope.with_layer(config.vars.clone());
+                scope = scope.with_layer(with_env_fallback(&config.vars, &config.secrets));
             }
         }
         let env_name = environment.or(self.meta.default_environment.as_deref());
@@ -433,23 +574,34 @@ impl Collection {
                 .environments
                 .get(name)
                 .ok_or_else(|| Error::UnknownEnvironment(name.to_owned()))?;
-            scope = scope.with_layer(env.vars.clone());
+            scope = scope.with_layer(with_env_fallback(&env.vars, &env.secrets));
         }
         Ok(scope)
     }
 
     /// Construye el ámbito de variables para un entorno (o el predeterminado).
     pub fn scope(&self, environment: Option<&str>) -> Result<Scope> {
-        let mut scope = Scope::new().with_layer(self.meta.vars.clone());
+        use crate::secrets::with_env_fallback;
+        let mut scope =
+            Scope::new().with_layer(with_env_fallback(&self.meta.vars, &self.meta.secrets));
         let env_name = environment.or(self.meta.default_environment.as_deref());
         if let Some(name) = env_name {
             let env = self
                 .environments
                 .get(name)
                 .ok_or_else(|| Error::UnknownEnvironment(name.to_owned()))?;
-            scope = scope.with_layer(env.vars.clone());
+            scope = scope.with_layer(with_env_fallback(&env.vars, &env.secrets));
         }
         Ok(scope)
+    }
+}
+
+fn read_local_secrets(root: &Path) -> Result<crate::secrets::LocalSecrets> {
+    let path = root.join(STATE_DIR).join(crate::secrets::LOCAL_FILE);
+    if path.is_file() {
+        read_toml(&path)
+    } else {
+        Ok(crate::secrets::LocalSecrets::default())
     }
 }
 

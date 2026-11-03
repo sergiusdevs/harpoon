@@ -311,8 +311,8 @@ pub struct Environment {
     #[serde(default)]
     pub vars: IndexMap<String, String>,
     /// Nombres de variables cuyo valor NO se guarda en el repo: se leen de
-    /// `environments/<nombre>.secrets.toml` (ignorado por Git) o de variables
-    /// de entorno `HARPOON_<NOMBRE>`.
+    /// `environments/<nombre>.secrets.toml` (ignorado por Git) o de la
+    /// variable del sistema `HARPOON_<NOMBRE>` (ver [`crate::secrets`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secrets: Vec<String>,
 }
@@ -328,6 +328,10 @@ pub struct CollectionMeta {
     pub default_environment: Option<String>,
     #[serde(default)]
     pub vars: IndexMap<String, String>,
+    /// Variables de colección secretas: aquí solo el nombre; el valor vive en
+    /// `.harpoon/secrets.toml` (ignorado por Git) o en `HARPOON_<NOMBRE>`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secrets: Vec<String>,
     #[serde(default)]
     pub auth: Auth,
     #[serde(default)]

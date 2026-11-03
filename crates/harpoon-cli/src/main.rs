@@ -1,5 +1,6 @@
 //! `harpoon`: interfaz de línea de comandos.
 
+mod check;
 mod datafile;
 mod output;
 
@@ -53,8 +54,34 @@ enum Command {
         #[arg(long, default_value_t = 8787)]
         port: u16,
     },
+    /// Exporta un entorno (los secretos salen con valor vacío).
+    EnvExport {
+        /// Nombre del entorno.
+        name: String,
+        /// Archivo destino.
+        file: PathBuf,
+        /// `postman` (JSON) o `harpoon` (TOML).
+        #[arg(long, default_value = "postman")]
+        format: String,
+    },
+    /// Importa un entorno de Postman (JSON) o Harpoon (TOML).
+    EnvImport {
+        file: PathBuf,
+        /// Nombre del entorno (por defecto, el del archivo).
+        #[arg(long)]
+        name: Option<String>,
+    },
     /// Lista las solicitudes y entornos de la colección.
     List,
+    /// Comprueba que no se suben secretos a Git (para pre-commit o CI).
+    ///
+    /// Sale con 1 si encuentra tokens o contraseñas escritos tal cual en archivos
+    /// versionados, o archivos de secretos que Git no ignora.
+    Check {
+        /// Salida en JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Envía una solicitud y muestra la respuesta.
     Send {
         /// Identificador de la solicitud (ruta relativa sin `.toml`, p. ej. `users/list`).
@@ -180,6 +207,49 @@ async fn run() -> anyhow::Result<ExitCode> {
             }
             println!("Colección importada en {}", col.root.display());
             Ok(ExitCode::SUCCESS)
+        }
+        Command::EnvExport { name, file, format } => {
+            use harpoon_core::env_io::{EnvFormat, export};
+            let col = open(cli.collection.as_deref())?;
+            let env = col
+                .environments
+                .get(&name)
+                .with_context(|| format!("no existe el entorno {name}"))?;
+            let format = match format.as_str() {
+                "postman" => EnvFormat::Postman,
+                "harpoon" | "toml" => EnvFormat::Harpoon,
+                other => anyhow::bail!("formato desconocido: {other} (usa postman o harpoon)"),
+            };
+            std::fs::write(&file, export(&name, env, format))?;
+            println!(
+                "Entorno `{name}` exportado a {} (secretos sin valor)",
+                file.display()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::EnvImport { file, name } => {
+            let mut col = open(cli.collection.as_deref())?;
+            let imported = harpoon_core::env_io::read(&file)?;
+            let name =
+                harpoon_core::env_io::sanitize_name(name.as_deref().unwrap_or(&imported.name));
+            anyhow::ensure!(
+                !col.environments.contains_key(&name),
+                "ya existe un entorno llamado {name}"
+            );
+            for w in &imported.warnings {
+                eprintln!("aviso: {w}");
+            }
+            col.save_environment(&name, imported.env)?;
+            println!(
+                "Entorno `{name}` importado ({} variables, {} secretas)",
+                imported.variables,
+                imported.secrets.len()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Check { json } => {
+            let col = open(cli.collection.as_deref())?;
+            check::run(&col, cli.env.as_deref(), json)
         }
         Command::List => {
             let col = open(cli.collection.as_deref())?;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { streams } from "./state/streams.svelte";
   import { store } from "./state/store.svelte";
   import { isMock } from "./services/api";
@@ -21,11 +21,29 @@
   import CollectionSearch from "./components/collection/CollectionSearch.svelte";
   import LiveConnection from "./components/request/LiveConnection.svelte";
   import MockServer from "./components/collection/MockServer.svelte";
+  import DevTools from "./components/devtools/DevTools.svelte";
+  import DevIcon from "./components/devtools/DevIcon.svelte";
+  import { devtools } from "./state/devtools.svelte";
+  import SecretFindings from "./components/secrets/SecretFindings.svelte";
+  import MissingSecrets from "./components/secrets/MissingSecrets.svelte";
+  import MissingIndicator from "./components/secrets/MissingIndicator.svelte";
 
   let sidebarW = $state(250);
 
+  // Secretos sin valor en esta máquina: se recalculan al cambiar de colección o de entorno…
+  const collectionRoot = $derived(store.collection?.root ?? null);
+  $effect(() => {
+    void collectionRoot; void store.env;
+    untrack(() => void store.refreshMissingSecrets());
+  });
+  // …y se piden una vez por colección+entorno, si no hay otro modal o diálogo abierto.
+  $effect(() => {
+    if (store.missingSecrets.length && store.dismissedMissing !== store.missingKey && !store.modal && !store.dialog) store.modal = "missing-secrets";
+  });
+
   onMount(() => {
     store.restore();
+    void devtools.start();
     if (isMock && !store.collection) void store.open("mock");
     const beforeUnload = (event: BeforeUnloadEvent) => {
       if (store.hasUnsavedTabs) { event.preventDefault(); event.returnValue = ""; }
@@ -43,15 +61,24 @@
     return () => { window.removeEventListener("beforeunload", beforeUnload); unlisten?.(); };
   });
 
+  function onKey(e: KeyboardEvent) {
+    if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.defaultPrevented) return;
+    if (e.key === "j") { e.preventDefault(); devtools.toggle(); }
+    else if (e.key === "b" && !store.modal && !store.dialog) { e.preventDefault(); store.toggleSidebar(); }
+  }
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <div class="app">
-  <div class="col sidebar" style="width: {sidebarW}px">
-    <Sidebar />
-  </div>
-  <Splitter onresize={(d) => (sidebarW = Math.min(480, Math.max(180, sidebarW + d)))} />
+  {#if !store.sidebarHidden}
+    <div class="col sidebar" style="width: {sidebarW}px">
+      <Sidebar />
+    </div>
+    <Splitter onresize={(d) => (sidebarW = Math.min(480, Math.max(180, sidebarW + d)))} />
+  {/if}
   <div class="col work">
-    <div class="titlebar" data-tauri-drag-region>
+    <div class="titlebar" class:no-sidebar={store.sidebarHidden} data-tauri-drag-region>
       <span class="crumb">
         {#if store.collection && store.selected}
           <span class="muted">{store.collection.meta.name}</span>
@@ -61,14 +88,26 @@
           {/each}
         {/if}
       </span>
-      {#if store.collection}
-        <EnvironmentSelect />
-      {/if}
+      <div class="title-actions">
+        {#if store.collection}
+          <MissingIndicator />
+          <EnvironmentSelect />
+        {/if}
+        <div class="layout-buttons" role="group" aria-label="Disposición">
+          <button class="layout-btn" class:on={!store.sidebarHidden} title="Barra lateral (⌘B)" aria-label="Mostrar u ocultar la barra lateral" aria-pressed={!store.sidebarHidden} onclick={() => store.toggleSidebar()}><DevIcon name="sidebar" size={17} filled={!store.sidebarHidden} /></button>
+          <button class="layout-btn" class:on={devtools.open} title="Consola y red (⌘J)" aria-label="Mostrar u ocultar la consola" aria-pressed={devtools.open} onclick={() => devtools.toggle()}><DevIcon name="panel-bottom" size={17} filled={devtools.open} />{#if devtools.unseenErrors}<span class="err-dot" aria-label="errores nuevos"></span>{/if}</button>
+          <button class="layout-btn on" title={store.forceStacked ? "Respuesta al lado" : "Respuesta debajo"} aria-label="Cambiar disposición de solicitud y respuesta" onclick={() => store.toggleStacked()}><DevIcon name={store.forceStacked ? "split-cols" : "split-rows"} size={17} /></button>
+        </div>
+      </div>
     </div>
     {#if store.collection}<RequestTabs />{/if}
     <main class="workspace">
       <RequestPane />
     </main>
+    {#if devtools.open}
+      <Splitter direction="vertical" onresize={(d) => devtools.resize(d)} />
+      <DevTools />
+    {/if}
     <footer class="statusbar {store.status.kind}">
       <span class="dot"></span>
       <span class="text">{store.status.text}</span>
@@ -78,7 +117,11 @@
 </div>
 
 <Dialog />
-{#if store.modal === "mock" && store.collection}
+{#if store.modal === "secret-findings" && store.secretFindings}
+  <SecretFindings />
+{:else if store.modal === "missing-secrets" && store.collection}
+  <MissingSecrets />
+{:else if store.modal === "mock" && store.collection}
   <MockServer />
 {:else if store.modal === "stream" && streams.current}
   <LiveConnection />
@@ -143,7 +186,14 @@
   .sep {
     color: var(--text-faint);
   }
-  .workspace { flex: 1; min-height: 0; min-width: 0; }
+  .workspace { flex: 1; min-height: 120px; min-width: 0; }
+  .titlebar.no-sidebar { padding-left: 84px; } /* hueco para los semáforos de macOS */
+  .title-actions { display: flex; align-items: center; gap: 12px; -webkit-app-region: no-drag; }
+  .layout-buttons { display: flex; align-items: center; gap: 2px; }
+  .layout-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 28px; border-radius: 6px; color: var(--text-faint); }
+  .layout-btn.on { color: var(--text-muted); }
+  .layout-btn:hover { color: var(--text); background: var(--bg-hover); }
+  .err-dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--err); box-shadow: 0 0 0 2px var(--bg); }
   .statusbar {
     height: 26px;
     flex: 0 0 26px;

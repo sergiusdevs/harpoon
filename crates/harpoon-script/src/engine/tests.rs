@@ -21,6 +21,7 @@ fn pre_modifica_la_solicitud_y_las_variables() {
                 harpoon.req.url = harpoon.req.url + "?ts=1";
                 harpoon.vars.set("nonce", 42);
                 console.log("hola", {a: 1});
+                console.warn("ojo");
                 "#,
             Some(&req()),
             None,
@@ -32,7 +33,10 @@ fn pre_modifica_la_solicitud_y_las_variables() {
     assert_eq!(r.headers["X-Trace"], "abc");
     assert_eq!(r.url, "{{base_url}}/x?ts=1");
     assert_eq!(out.vars["nonce"], "42");
-    assert_eq!(out.logs, vec![r#"hola {"a":1}"#]);
+    assert_eq!(
+        out.logs,
+        vec![r#"hola {"a":1}"#.to_string(), "[warn] ojo".to_string()]
+    );
 }
 
 #[test]

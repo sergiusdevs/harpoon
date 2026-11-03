@@ -2,6 +2,9 @@
   // Formulario de autenticación, compartido por solicitud y colección.
   import { emptyOAuth2, type Auth } from "../../domain/types";
   import KeyValue from "../common/KeyValue.svelte";
+  import SecretInput from "../secrets/SecretInput.svelte";
+  import SaveAsSecret from "../secrets/SaveAsSecret.svelte";
+  import { isLiteral } from "../../domain/secrets";
 
   interface Props {
     auth: Auth;
@@ -9,8 +12,10 @@
     /** En la colección no tiene sentido "heredar". */
     allowInherit?: boolean;
     inheritHint?: string;
+    /** Muestra "Guardar como secreto" junto a los campos con valor escrito tal cual (solo en la solicitud abierta). */
+    secretActions?: boolean;
   }
-  let { auth, onchange, allowInherit = true, inheritHint = "" }: Props = $props();
+  let { auth, onchange, allowInherit = true, inheritHint = "", secretActions = false }: Props = $props();
 
   function setKind(kind: Auth["type"]) {
     const a: Auth =
@@ -24,6 +29,10 @@
     onchange(a);
   }
 </script>
+
+{#snippet lock(field: string, value: string)}
+  {#if secretActions && isLiteral(value)}<SaveAsSecret location={`auth.${field}`} />{/if}
+{/snippet}
 
 <div class="form">
   <label>
@@ -41,19 +50,19 @@
   {#if auth.type === "basic"}
     {@const a = auth}
     <label><span>Usuario</span><input class="mono" value={a.username} oninput={(e) => onchange({ ...a, username: e.currentTarget.value })} /></label>
-    <label><span>Contraseña</span><input class="mono" value={a.password} oninput={(e) => onchange({ ...a, password: e.currentTarget.value })} placeholder="{'{{password}}'}" /></label>
+    <label><span>Contraseña</span><span class="field"><SecretInput inputClass="mono" label="Contraseña" value={a.password} oninput={(v) => onchange({ ...a, password: v })} placeholder={"{{password}}"} />{@render lock("password", a.password)}</span></label>
   {:else if auth.type === "bearer"}
     {@const a = auth}
-    <label><span>Token</span><input class="mono" value={a.token} oninput={(e) => onchange({ ...a, token: e.currentTarget.value })} placeholder="{'{{token}}'}" /></label>
+    <label><span>Token</span><span class="field"><input class="mono" value={a.token} oninput={(e) => onchange({ ...a, token: e.currentTarget.value })} placeholder="{'{{token}}'}" />{@render lock("token", a.token)}</span></label>
   {:else if auth.type === "api_key"}
     {@const a = auth}
     <label><span>Clave</span><input class="mono" value={a.key} oninput={(e) => onchange({ ...a, key: e.currentTarget.value })} placeholder="X-API-Key" /></label>
-    <label><span>Valor</span><input class="mono" value={a.value} oninput={(e) => onchange({ ...a, value: e.currentTarget.value })} placeholder="{'{{api_key}}'}" /></label>
+    <label><span>Valor</span><span class="field"><input class="mono" value={a.value} oninput={(e) => onchange({ ...a, value: e.currentTarget.value })} placeholder="{'{{api_key}}'}" />{@render lock("value", a.value)}</span></label>
     <label><span>Enviar en</span><select value={a.in} onchange={(e) => onchange({ ...a, in: e.currentTarget.value as "header" | "query" })}><option value="header">cabecera</option><option value="query">query</option></select></label>
   {:else if auth.type === "digest"}
     {@const a = auth}
     <label><span>Usuario</span><input class="mono" value={a.username} oninput={(e) => onchange({ ...a, username: e.currentTarget.value })} /></label>
-    <label><span>Contraseña</span><input class="mono" type="password" value={a.password} oninput={(e) => onchange({ ...a, password: e.currentTarget.value })} placeholder="{'{{password}}'}" /></label>
+    <label><span>Contraseña</span><span class="field"><SecretInput inputClass="mono" label="Contraseña" value={a.password} oninput={(v) => onchange({ ...a, password: v })} placeholder={"{{password}}"} />{@render lock("password", a.password)}</span></label>
     <p class="muted hint">Responde al reto <code>401 WWW-Authenticate: Digest</code> (MD5 o SHA-256, con o sin <code>qop</code>).</p>
   {:else if auth.type === "oauth2"}
     {@const a = auth}
@@ -67,13 +76,13 @@
     </label>
     <label><span>Token URL</span><input class="mono" value={a.token_url} oninput={(e) => onchange({ ...a, token_url: e.currentTarget.value })} placeholder="https://auth.example.com/oauth/token" /></label>
     <label><span>Client ID</span><input class="mono" value={a.client_id} oninput={(e) => onchange({ ...a, client_id: e.currentTarget.value })} /></label>
-    <label><span>Client secret</span><input class="mono" type="password" value={a.client_secret} oninput={(e) => onchange({ ...a, client_secret: e.currentTarget.value })} placeholder="{'{{client_secret}}'}" /></label>
+    <label><span>Client secret</span><span class="field"><SecretInput inputClass="mono" label="Client secret" value={a.client_secret} oninput={(v) => onchange({ ...a, client_secret: v })} placeholder={"{{client_secret}}"} />{@render lock("client_secret", a.client_secret)}</span></label>
     <label><span>Scope</span><input class="mono" value={a.scope} oninput={(e) => onchange({ ...a, scope: e.currentTarget.value })} placeholder="read write" /></label>
     {#if a.grant === "password"}
       <label><span>Usuario</span><input class="mono" value={a.username} oninput={(e) => onchange({ ...a, username: e.currentTarget.value })} /></label>
-      <label><span>Contraseña</span><input class="mono" type="password" value={a.password} oninput={(e) => onchange({ ...a, password: e.currentTarget.value })} /></label>
+      <label><span>Contraseña</span><span class="field"><SecretInput inputClass="mono" label="Contraseña" value={a.password} oninput={(v) => onchange({ ...a, password: v })} />{@render lock("password", a.password)}</span></label>
     {:else if a.grant === "refresh_token"}
-      <label><span>Refresh token</span><input class="mono" type="password" value={a.refresh_token} oninput={(e) => onchange({ ...a, refresh_token: e.currentTarget.value })} placeholder="{'{{refresh_token}}'}" /></label>
+      <label><span>Refresh token</span><span class="field"><SecretInput inputClass="mono" label="Refresh token" value={a.refresh_token} oninput={(v) => onchange({ ...a, refresh_token: v })} placeholder={"{{refresh_token}}"} />{@render lock("refresh_token", a.refresh_token)}</span></label>
     {/if}
     <label>
       <span>Credenciales de cliente</span>
@@ -89,7 +98,7 @@
   {:else if auth.type === "inherit" && inheritHint}
     <p class="muted hint">{inheritHint}</p>
   {/if}
-  <p class="muted hint">Usa variables (<code>{"{{token}}"}</code>) y guarda los valores reales como secretos del entorno.</p>
+  <p class="muted hint">Usa variables (<code>{"{{token}}"}</code>) y guarda los valores reales como {secretActions ? "secretos (el candado lo hace por ti)" : "secretos"}: en Git solo queda el nombre.</p>
 </div>
 
 <style>
@@ -105,9 +114,19 @@
     align-items: center;
     gap: 10px;
   }
-  label span {
+  label > span:first-child {
     color: var(--text-muted);
     font-size: 12px;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .field > input {
+    flex: 1;
+    min-width: 0;
   }
   input,
   select {

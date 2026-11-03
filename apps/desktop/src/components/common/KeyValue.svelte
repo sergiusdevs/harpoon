@@ -3,6 +3,9 @@
   import { onMount, tick } from "svelte";
   import VariableInput from "./VariableInput.svelte";
   import type { VariableSuggestion } from "../../domain/variables";
+  import { isLiteral, isSensitiveName } from "../../domain/secrets";
+  import SecretInput from "../secrets/SecretInput.svelte";
+  import SaveAsSecret from "../secrets/SaveAsSecret.svelte";
   // Editor de pares clave/valor: fila vacía al final, botón "Añadir",
   // borrado accesible por teclado y pegado en bloque ("Clave: valor" por línea).
   interface Props {
@@ -19,14 +22,22 @@
     caseInsensitive?: boolean;
     onDescriptionsChange?: (descriptions: Record<string, string>) => void;
     onDisabledChange?: (keys: string[]) => void;
+    /** Variables marcadas como secretas (añade la columna "Secreto" y enmascara su valor). */
+    secretKeys?: string[];
+    onSecretsChange?: (keys: string[]) => void;
+    /**
+     * Ubicación para "Guardar como secreto" ("header X", "parámetro X"…). Si se pasa,
+     * las filas con nombre sensible y valor escrito tal cual muestran un candado.
+     */
+    secretLocation?: (name: string) => string | null;
   }
-  let { entries, onchange, keyPlaceholder = "clave", valuePlaceholder = "valor", addLabel = "Añadir", suggestions = [], variables, disabledKeys = [], onDisabledChange, descriptions = {}, onDescriptionsChange, caseInsensitive = false }: Props = $props();
+  let { entries, onchange, keyPlaceholder = "clave", valuePlaceholder = "valor", addLabel = "Añadir", suggestions = [], variables, disabledKeys = [], onDisabledChange, descriptions = {}, onDescriptionsChange, caseInsensitive = false, secretKeys = [], onSecretsChange, secretLocation }: Props = $props();
 
   const sameKey = (first: string, second: string) => caseInsensitive ? first.toLowerCase() === second.toLowerCase() : first === second;
   const isDisabled = (key: string) => disabledKeys.some((disabled) => sameKey(disabled, key));
   const suggestionsId = $props.id();
 
-  let rows = $state<{ k: string; v: string; d: string }[]>([]);
+  let rows = $state<{ k: string; v: string; d: string; s?: boolean }[]>([]);
   let bulk = $state(false);
   let bulkText = $state("");
   let bulkError = $state("");
@@ -91,7 +102,7 @@
   });
 
   $effect(() => {
-    const next = Object.entries(entries).map(([k, v]) => ({ k, v, d: descriptions[k] ?? "" }));
+    const next = Object.entries(entries).map(([k, v]) => ({ k, v, d: descriptions[k] ?? "", s: secretKeys.includes(k) }));
     rows = [...next, { k: "", v: "", d: "" }];
   });
 
@@ -100,6 +111,13 @@
     for (const r of rows) if (r.k.trim()) out[r.k.trim()] = r.v;
     onchange(out);
     onDescriptionsChange?.(Object.fromEntries(rows.filter((row) => row.k.trim() && row.d.trim()).map((row) => [row.k.trim(), row.d])));
+    onSecretsChange?.([...new Set(rows.filter((row) => row.k.trim() && row.s).map((row) => row.k.trim()))]);
+  }
+
+  function setSecret(i: number, secret: boolean) {
+    rows[i].s = secret;
+    if (i === rows.length - 1) rows.push({ k: "", v: "", d: "" });
+    commit();
   }
 
   function edit(i: number, field: "k" | "v" | "d", val: string) {
@@ -158,7 +176,7 @@
   function applyBulk() {
     try {
       const parsed = parseBulkEntries(bulkText);
-      rows = [...parsed.map((row) => ({ ...row, d: row.d || descriptions[row.k] || "" })), { k: "", v: "", d: "" }];
+      rows = [...parsed.map((row) => ({ ...row, d: row.d || descriptions[row.k] || "", s: secretKeys.includes(row.k) })), { k: "", v: "", d: "" }];
       if (onDisabledChange) onDisabledChange(disabledKeys.filter((key) => parsed.some((row) => sameKey(row.k, key))));
       commit(); bulk = false; bulkError = "";
     } catch (error) { bulkError = error instanceof Error ? error.message : String(error); }
@@ -210,9 +228,10 @@
 {:else}
 <div class="kv-frame">
 <table class="kv" bind:this={table}>
-  <thead><tr>{#if onDisabledChange}<th class="toggle" scope="col"><span class="sr-only">Activo</span></th>{/if}<th scope="col">Nombre</th><th scope="col">Valor</th>{#if onDescriptionsChange}<th class="description" scope="col">Descripción</th>{/if}<th class="delete-head" scope="col"><span class="sr-only">Eliminar</span></th></tr></thead>
+  <thead><tr>{#if onDisabledChange}<th class="toggle" scope="col"><span class="sr-only">Activo</span></th>{/if}<th scope="col">Nombre</th><th scope="col">Valor</th>{#if onDescriptionsChange}<th class="description" scope="col">Descripción</th>{/if}{#if onSecretsChange}<th class="secret" scope="col">Secreto</th>{/if}<th class="delete-head" scope="col"><span class="sr-only">Eliminar</span></th></tr></thead>
   <tbody>
     {#each rows as row, i (i)}
+      {@const lockAt = secretLocation && row.k.trim() && isSensitiveName(row.k) && isLiteral(row.v) ? secretLocation(row.k.trim()) : null}
       <tr class:disabled-row={!!row.k.trim() && isDisabled(row.k.trim())}>
         {#if onDisabledChange}<td class="toggle">{#if row.k.trim()}<input type="checkbox" checked={!isDisabled(row.k.trim())} aria-label={`Activar ${row.k}`} onchange={(e) => onDisabledChange?.(e.currentTarget.checked ? disabledKeys.filter((key) => !sameKey(key, row.k.trim())) : [...disabledKeys, row.k.trim()])} />{/if}</td>{/if}
         <td class="key-cell">
@@ -226,9 +245,17 @@
             onpaste={(e) => onPaste(e, i)} onkeydown={(e) => onKey(e, i, "k")} spellcheck="false" />
         </td>
         <td>
-          <VariableInput {variables} inputClass="v" value={row.v} placeholder={valuePlaceholder} label="{valuePlaceholder} {i + 1}" oninput={(e) => edit(i, "v", e.currentTarget.value)} onkeydown={(e) => onKey(e, i, "v")} compact />
+          <div class="value-cell">
+            {#if onSecretsChange && row.s}
+              <SecretInput inputClass="v masked" value={row.v} placeholder={valuePlaceholder} label="{valuePlaceholder} {i + 1}" oninput={(value) => edit(i, "v", value)} onkeydown={(e) => onKey(e, i, "v")} />
+            {:else}
+              <div class="grow"><VariableInput {variables} inputClass="v" value={row.v} placeholder={valuePlaceholder} label="{valuePlaceholder} {i + 1}" oninput={(e) => edit(i, "v", e.currentTarget.value)} onkeydown={(e) => onKey(e, i, "v")} compact /></div>
+            {/if}
+            {#if lockAt}<SaveAsSecret location={lockAt} />{/if}
+          </div>
         </td>
         {#if onDescriptionsChange}<td class="description"><input class="d" value={row.d} placeholder="Descripción" aria-label={`Descripción ${i + 1}`} disabled={!row.k.trim()} oninput={(event) => edit(i, "d", event.currentTarget.value)} /></td>{/if}
+        {#if onSecretsChange}<td class="secret"><input type="checkbox" checked={!!row.s} aria-label={`Marcar ${row.k || `fila ${i + 1}`} como secreto`} title="Secreto: en Git solo se guarda el nombre" onchange={(e) => setSecret(i, e.currentTarget.checked)} /></td>{/if}
         <td class="del">
           {#if i < rows.length - 1}
             <button class="del" title="Quitar (⌘⌫)" aria-label="Quitar fila {i + 1}" onclick={() => remove(i)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button>
@@ -254,7 +281,7 @@
   </div>
 {/if}
 <div class="kv-actions">
-  <button class="btn small" onclick={add}>+ {addLabel}</button>
+  <button class="add-link" onclick={add}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>{addLabel}</button>
   <button class="bulk-link" onclick={openBulk}>Edición en bloque</button>
 </div>
 {/if}
@@ -271,8 +298,14 @@
   .kv .description { width: 27%; }
   .kv input { min-width: 0; font-family: var(--font); font-size: 12px; }
   .kv td.del { width: 30px; opacity: 1; }
-  .kv button.del { opacity: .6; width: 22px; height: 25px; display: inline-flex; align-items: center; justify-content: center; }
-  .kv button.del:hover { opacity: 1; }
+  .kv button.del { opacity: 0; width: 22px; height: 25px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); border-radius: 4px; transition: opacity var(--t); }
+  .kv tr:hover button.del, .kv button.del:focus-visible { opacity: .75; }
+  .kv button.del:hover { opacity: 1; color: var(--err); }
+  .kv tbody tr { transition: background var(--t); }
+  .kv tbody tr:hover { background: color-mix(in srgb, var(--bg-hover) 45%, transparent); }
+  .kv-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+  .add-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted); padding: 5px 2px; }
+  .add-link:hover { color: var(--text); }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .bulk-link { color: var(--accent); margin-left: auto; font-size: 12px; padding: 5px 0; }
   .bulk-link:hover { color: var(--accent-strong); }
@@ -299,6 +332,11 @@
   .suggestions button:hover, .suggestions button.active { background: var(--accent-soft); color: var(--accent-strong); }
   .suggestion-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--bg-hover); color: var(--text-muted); font: 600 11px var(--font); }
   .kv .toggle { width: 28px; text-align: center; }
+  .kv .secret { width: 64px; text-align: center; }
+  .kv td.secret input { width: 14px; height: 14px; padding: 0; accent-color: var(--accent); }
+  .value-cell { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .value-cell .grow { flex: 1; min-width: 0; }
+  .value-cell :global(input.masked) { font-family: var(--mono); border: 1px solid transparent; background: transparent; padding: 5px 6px; }
   .kv .toggle input { width: 14px; height: 14px; padding: 0; accent-color: var(--accent); }
   .disabled-row { background: color-mix(in srgb, var(--bg-panel) 65%, transparent); }
   .disabled-row td:not(.toggle):not(.del) { opacity: .42; }

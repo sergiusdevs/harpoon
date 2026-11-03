@@ -6,8 +6,11 @@ Una colección es un directorio. Todo son archivos TOML, legibles y diffeables.
 mi-api/
 ├── harpoon.toml                  # metadatos, variables y auth de la colección
 ├── .gitignore                  # environments/*.secrets.toml, .harpoon/
-├── .harpoon/vars.toml          # variables de ejecución (NO se versiona)
+├── .harpoon/                   # NO se versiona (lleva su propio .gitignore)
+│   ├── vars.toml               # variables de ejecución
+│   └── secrets.toml            # valores de secretos de colección y carpetas
 ├── environments/
+│   ├── .gitignore              # *.secrets.toml
 │   ├── dev.toml
 │   ├── dev.secrets.toml        # NO se versiona; se fusiona sobre dev.toml
 │   └── prod.toml
@@ -56,7 +59,9 @@ base_url = "https://api.dev.example.com"
 ```
 
 `environments/<nombre>.secrets.toml` tiene la misma forma y **sobrescribe** `vars`.
-Alternativa sin archivo: variable de entorno `HARPOON_TOKEN` (fase 1).
+Alternativa sin archivo: variable del sistema `HARPOON_TOKEN`. Las variables de
+colección (`harpoon.toml`) y de carpeta (`folder.toml`) también admiten
+`secrets = [...]`; ver [secrets.md](secrets.md).
 
 ## `requests/**/<nombre>.toml`
 

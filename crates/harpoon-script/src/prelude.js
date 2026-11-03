@@ -30,15 +30,21 @@ function __fmt(v) {
   }
 }
 
+// `console.log` guarda el texto tal cual; el resto de niveles lo prefija con
+// `[nivel] ` para que la consola de la app (y la CLI) puedan distinguirlos.
+function __logger(level) {
+  return function () {
+    var text = Array.prototype.map.call(arguments, __str).join(" ");
+    __h.logs.push(level ? "[" + level + "] " + text : text);
+  };
+}
 var console = {
-  log: function () {
-    __h.logs.push(Array.prototype.map.call(arguments, __str).join(" "));
-  },
+  log: __logger(""),
+  info: __logger("info"),
+  warn: __logger("warn"),
+  error: __logger("error"),
+  debug: __logger("debug"),
 };
-console.info = console.log;
-console.warn = console.log;
-console.error = console.log;
-console.debug = console.log;
 
 var harpoon = {
   __init: function (json) {
