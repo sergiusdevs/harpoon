@@ -1,16 +1,16 @@
 /* Harpoon — tokens de diseño. Oscuro por defecto, denso y limpio. */
 :root {
   color-scheme: dark;
-  --bg: #262d37;
-  --bg-panel: #20262f;
-  --bg-raised: #2f3743;
-  --bg-hover: #38424f;
-  --bg-active: #3e4b59;
-  --border: #3d4856;
-  --border-strong: #55636f;
-  --text: #f0f4f8;
-  --text-muted: #b8c4cf;
-  --text-faint: #8d9cab;
+  --bg: #2b313c;
+  --bg-panel: #262c36;
+  --bg-raised: #343b47;
+  --bg-hover: #3d4552;
+  --bg-active: #46505e;
+  --border: #464f5d;
+  --border-strong: #5d6878;
+  --text: #f3f6f9;
+  --text-muted: #c0cad4;
+  --text-faint: #97a3b0;
   --accent: #7cc4c8;
   --accent-strong: #a6dcdc;
   --accent-soft: rgba(124, 196, 200, 0.16);
