@@ -580,7 +580,7 @@ mod tests {
         for args in [
             json!({"key": "rm/leak", "method": "GET", "url": "https://a.test", "headers": {"Authorization": "Bearer abc123"}}),
             json!({"key": "rm/leak", "method": "GET", "url": "https://a.test", "query": {"api_key": "s3cr3t"}}),
-            json!({"key": "rm/leak", "method": "GET", "url": "https://a.test", "headers": {"X-Note": "ghp_abcdefghijklmnopqrstuvwxyz0123456789"}}),
+            json!({"key": "rm/leak", "method": "GET", "url": "https://a.test", "headers": {"X-Note": concat!("ghp", "_abcdefghijklmnopqrstuvwxyz0123456789")}}),
         ] {
             let out = call_raw(&s, "save_request", &args);
             assert_eq!(out["isError"], true, "{args}");

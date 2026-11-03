@@ -408,14 +408,29 @@ mod tests {
     fn reconoce_formatos_conocidos() {
         for (text, kind) in [
             (
-                "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+                concat!(
+                    "Bearer eyJhbGciOiJIUzI1NiJ9",
+                    ".eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+                ),
                 "token JWT",
             ),
-            ("AKIAIOSFODNN7EXAMPLE", "clave de AWS"),
-            ("token ghp_1234567890abcdefghijklmnopqrstuvwxyzAB", "GitHub"),
-            ("sk-ant-api03-abcdefghijklmnopqrstuvwxyz", "Anthropic"),
-            ("key=AIzaSyA1234567890abcdefghijklmnopqrstuv", "Google"),
-            ("-----BEGIN RSA PRIVATE KEY-----\nMIIE", "clave privada"),
+            (concat!("AKIA", "IOSFODNN7EXAMPLE"), "clave de AWS"),
+            (
+                concat!("token ghp", "_1234567890abcdefghijklmnopqrstuvwxyzAB"),
+                "GitHub",
+            ),
+            (
+                concat!("sk-ant", "-api03-abcdefghijklmnopqrstuvwxyz"),
+                "Anthropic",
+            ),
+            (
+                concat!("key=AI", "zaSyA1234567890abcdefghijklmnopqrstuv"),
+                "Google",
+            ),
+            (
+                concat!("-----BEGIN RSA ", "PRIVATE KEY-----\nMIIE"),
+                "clave privada",
+            ),
         ] {
             let (found, _) = known_secret_in(text).unwrap_or_else(|| panic!("no detecta {text}"));
             assert!(

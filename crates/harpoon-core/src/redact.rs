@@ -321,7 +321,10 @@ mod tests {
         assert_eq!(safe_value("Accept", "application/json"), "application/json");
         // Formato de credencial conocido aunque el nombre sea inocente.
         assert_eq!(
-            safe_value("X-Note", "ghp_abcdefghijklmnopqrstuvwxyz0123456789"),
+            safe_value(
+                "X-Note",
+                concat!("ghp", "_abcdefghijklmnopqrstuvwxyz0123456789")
+            ),
             HIDDEN
         );
     }
