@@ -173,7 +173,7 @@ async fn run() -> anyhow::Result<ExitCode> {
         Command::PostmanExport { file } => {
             let col = open(cli.collection.as_deref())?;
             let (document, warnings) = harpoon_core::postman::export(&col);
-            std::fs::write(&file, serde_json::to_vec_pretty(&document)?)?;
+            harpoon_core::atomic::write(&file, serde_json::to_vec_pretty(&document)?)?;
             for warning in warnings {
                 eprintln!("Aviso: {warning}");
             }
@@ -192,7 +192,7 @@ async fn run() -> anyhow::Result<ExitCode> {
         Command::ShareExport { file } => {
             let col = open(cli.collection.as_deref())?;
             let shared = harpoon_core::share::export(&col)?;
-            std::fs::write(&file, serde_json::to_vec_pretty(&shared)?)?;
+            harpoon_core::atomic::write(&file, serde_json::to_vec_pretty(&shared)?)?;
             for warning in &shared.warnings {
                 eprintln!("Aviso: {warning}");
             }
@@ -220,7 +220,7 @@ async fn run() -> anyhow::Result<ExitCode> {
                 "harpoon" | "toml" => EnvFormat::Harpoon,
                 other => anyhow::bail!("formato desconocido: {other} (usa postman o harpoon)"),
             };
-            std::fs::write(&file, export(&name, env, format))?;
+            harpoon_core::atomic::write(&file, export(&name, env, format))?;
             println!(
                 "Entorno `{name}` exportado a {} (secretos sin valor)",
                 file.display()
@@ -380,7 +380,7 @@ async fn run() -> anyhow::Result<ExitCode> {
             let all_ok = report.all_passed();
             col.save_runtime_vars(&vars)?;
             if let Some(path) = &junit {
-                std::fs::write(path, output::junit(&report))
+                harpoon_core::atomic::write(path, output::junit(&report))
                     .with_context(|| format!("no se pudo escribir {}", path.display()))?;
                 if !json {
                     eprintln!("Informe JUnit escrito en {}", path.display());

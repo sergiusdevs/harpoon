@@ -681,7 +681,7 @@ fn write_file(path: &Path, contents: &str) -> Result<()> {
             source,
         })?;
     }
-    fs::write(path, contents).map_err(|source| Error::Io {
+    crate::atomic::write(path, contents).map_err(|source| Error::Io {
         path: path.into(),
         source,
     })

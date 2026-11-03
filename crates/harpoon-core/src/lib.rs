@@ -8,6 +8,7 @@
 //! (`harpoon-http`, `harpoon-script`) para que el núcleo sea pequeño, puro y
 //! fácil de probar.
 
+pub mod atomic;
 pub mod collection;
 pub mod env_io;
 pub mod error;

@@ -120,7 +120,7 @@ impl TokenCache {
                     if let Some(parent) = path.parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
-                    let _ = std::fs::write(path, text);
+                    let _ = harpoon_core::atomic::write(path, text);
                 }
             }
         }

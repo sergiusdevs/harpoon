@@ -116,7 +116,7 @@ fn ensure_rule(path: &Path, rule: &str, template: &str) -> Result<()> {
     } else {
         format!("{}\n{rule}\n", current.trim_end())
     };
-    std::fs::write(path, next).map_err(|source| crate::Error::Io {
+    crate::atomic::write(path, next).map_err(|source| crate::Error::Io {
         path: path.to_path_buf(),
         source,
     })

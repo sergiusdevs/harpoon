@@ -102,7 +102,7 @@ pub fn load(root: &Path) -> Result<Config, String> {
 pub fn save(root: &Path, config: &Config) -> Result<(), String> {
     config.validate()?;
     let data = toml::to_string_pretty(config).map_err(|e| e.to_string())?;
-    std::fs::write(root.join("mocks.toml"), data).map_err(|e| e.to_string())
+    harpoon_core::atomic::write(root.join("mocks.toml"), data).map_err(|e| e.to_string())
 }
 fn matches_path(pattern: &str, path: &str) -> bool {
     let expected: Vec<_> = pattern.split('/').collect();

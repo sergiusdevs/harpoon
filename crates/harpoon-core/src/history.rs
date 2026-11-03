@@ -4,7 +4,6 @@
 
 use std::{
     fs,
-    io::Write as _,
     path::{Path, PathBuf},
 };
 
@@ -70,17 +69,15 @@ pub fn append(root: &Path, key: &str, mut entry: HistoryEntry) -> Result<()> {
             source,
         })?;
     }
-    let mut file = fs::File::create(&path).map_err(|source| Error::Io {
+    let mut text = String::new();
+    for e in &entries {
+        text.push_str(&serde_json::to_string(e)?);
+        text.push('\n');
+    }
+    crate::atomic::write(&path, text).map_err(|source| Error::Io {
         path: path.clone(),
         source,
     })?;
-    for e in &entries {
-        let line = serde_json::to_string(e)?;
-        writeln!(file, "{line}").map_err(|source| Error::Io {
-            path: path.clone(),
-            source,
-        })?;
-    }
     crate::secrets::ensure_gitignores(root)
 }
 
