@@ -32,8 +32,8 @@ jobs:
       - run: cargo test --workspace
       - name: La CLI funciona de punta a punta
         run: |
-          cargo run -q -- init demo --name "Demo"
-          cargo run -q -- -C demo list
+          cargo run -q --bin harpoon -- init demo --name "Demo"
+          cargo run -q --bin harpoon -- -C demo list
 
   desktop:
     name: Frontend (check + test + build)
