@@ -10,6 +10,8 @@
   import { REQUEST_TYPES, requestType, type RequestType, type Auth, type Body } from "../../domain/types";
   import CodeEditor from "../common/CodeEditor.svelte";
   import KeyValue from "../common/KeyValue.svelte";
+  import RuntimeHeaders from "./RuntimeHeaders.svelte";
+  import { disabledRuntime, runtimeHeaders } from "../../domain/runtimeHeaders";
   import AuthForm from "./AuthForm.svelte";
   import MethodBadge from "../common/MethodBadge.svelte";
   import VariableInput from "../common/VariableInput.svelte";
@@ -280,8 +282,12 @@
         <p class="table-label">Parámetros de consulta</p>
         <KeyValue descriptions={req.query_descriptions ?? {}} onDescriptionsChange={(values) => set("query_descriptions", values)} {variables} disabledKeys={req.disabled_query} onDisabledChange={(keys) => set("disabled_query", keys)} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" secretLocation={(name) => `parámetro ${name}`} />
       {:else if tab === "headers"}
-        <p class="table-label">Cabeceras de la solicitud</p>
-        <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", keys)} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} secretLocation={(name) => `header ${name}`} />
+        {#if type === "http" || type === "graphql"}
+          <RuntimeHeaders headers={runtimeHeaders(req, store.collection?.meta.auth ?? { type: "none" }, resolvedUrl)} disabled={disabledRuntime(req)}
+            ontoggle={(name, enabled) => set("disabled_headers", enabled ? (req.disabled_headers ?? []).filter((k) => k.toLowerCase() !== name.toLowerCase()) : [...(req.disabled_headers ?? []), name])} />
+        {/if}
+        <p class="table-label">Cabeceras de la solicitud <span class="muted">({count(req.headers)})</span></p>
+        <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", [...keys, ...disabledRuntime(req).filter((name) => !keys.some((k) => k.toLowerCase() === name.toLowerCase()))])} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} secretLocation={(name) => `header ${name}`} />
       {:else if tab === "body"}
         <div class="body">
           {#if bodyKind === "json"}<div class="body-bar"><button class="btn small" onclick={formatJson}>Formatear JSON</button>{#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}</div>{/if}

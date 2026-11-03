@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { parseBulkEntries } from "../../domain/bulkEntries";
+  import { parseBulkEntries, serializeBulkEntries } from "../../domain/bulkEntries";
+  import CodeEditor from "./CodeEditor.svelte";
   import { onMount, tick } from "svelte";
   import VariableInput from "./VariableInput.svelte";
   import type { VariableSuggestion } from "../../domain/variables";
@@ -170,16 +171,23 @@
   }
 
   function openBulk() {
-    bulkText = Object.entries(entries).map(([key, value]) => [key, value, ...(onDescriptionsChange ? [descriptions[key] ?? ""] : [])].join("\t")).join("\n");
+    bulkText = serializeBulkEntries(entries, onDisabledChange ? isDisabled : undefined);
     bulkError = ""; bulk = true;
   }
-  function applyBulk() {
+  /** Los cambios del editor en bloque se aplican al momento si el texto es válido. */
+  function applyBulk(text: string) {
+    bulkText = text;
     try {
-      const parsed = parseBulkEntries(bulkText);
-      rows = [...parsed.map((row) => ({ ...row, d: row.d || descriptions[row.k] || "", s: secretKeys.includes(row.k) })), { k: "", v: "", d: "" }];
-      if (onDisabledChange) onDisabledChange(disabledKeys.filter((key) => parsed.some((row) => sameKey(row.k, key))));
-      commit(); bulk = false; bulkError = "";
+      // Sin columna de activación, las líneas `//` se descartan.
+      const parsed = parseBulkEntries(text).filter((row) => onDisabledChange || !row.disabled);
+      rows = [...parsed.map(({ disabled: _, ...row }) => ({ ...row, d: row.d || descriptions[row.k] || "", s: secretKeys.includes(row.k) })), { k: "", v: "", d: "" }];
+      onDisabledChange?.(parsed.filter((row) => row.disabled).map((row) => row.k));
+      commit(); bulkError = "";
     } catch (error) { bulkError = error instanceof Error ? error.message : String(error); }
+  }
+  function closeBulk() {
+    if (bulkError) return;
+    bulk = false;
   }
 
   function onKey(e: KeyboardEvent, i: number, field: "k" | "v") {
@@ -219,11 +227,11 @@
 </script>
 
 {#if bulk}
-  <div class="bulk-editor">
-    <label for={`${suggestionsId}-bulk`}>Una fila por línea: nombre, valor y descripción separados por tabuladores. También acepta Nombre: valor.</label>
-    <textarea id={`${suggestionsId}-bulk`} aria-label="Edición en bloque" bind:value={bulkText} spellcheck="false"></textarea>
+  <div class="bulk-editor fade-in">
+    <div class="bulk-code"><CodeEditor value={bulkText} language="headers" wrap label="Edición en bloque" onchange={applyBulk} /></div>
+    <p class="bulk-help">Una fila por línea: <code>Nombre: valor</code>.{#if onDisabledChange}{" "}Empieza con <code>//</code> para desactivarla.{/if}</p>
     {#if bulkError}<p class="bulk-error" role="alert">{bulkError}</p>{/if}
-    <div class="bulk-actions"><button class="btn small" onclick={() => (bulk = false)}>Cancelar</button><button class="btn small primary" onclick={applyBulk}>Aplicar cambios</button></div>
+    <div class="kv-actions"><button class="bulk-link" disabled={!!bulkError} title={bulkError ? "Corrige el error para volver a la tabla" : undefined} onclick={closeBulk}>Edición clave/valor</button></div>
   </div>
 {:else}
 <div class="kv-frame">
@@ -310,9 +318,11 @@
   .bulk-link { color: var(--accent); margin-left: auto; font-size: 12px; padding: 5px 0; }
   .bulk-link:hover { color: var(--accent-strong); }
   .bulk-editor { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
-  .bulk-editor label { color: var(--text-muted); }
-  .bulk-editor textarea { width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono); background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 10px; }
-  .bulk-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .bulk-code { height: 260px; min-height: 140px; resize: vertical; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--bg-panel); transition: border-color var(--t), box-shadow var(--t); }
+  .bulk-code:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .bulk-help { margin: 0; color: var(--text-muted); }
+  .bulk-help code { font: 11px var(--mono); color: var(--text); }
+  .bulk-link:disabled { opacity: .5; cursor: default; }
   .bulk-error { color: var(--err); }
 
   .suggestions {

@@ -173,6 +173,9 @@ fn interpolate_json(value: &mut serde_json::Value, scope: &Scope) -> Result<()> 
     Ok(())
 }
 
+/// `User-Agent` que Harpoon envía si la solicitud no define uno ni lo desactiva.
+pub const USER_AGENT: &str = concat!("harpoon/", env!("CARGO_PKG_VERSION"));
+
 /// Resuelve variables y auth de una solicitud dentro de su colección.
 #[allow(clippy::too_many_lines)]
 pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Result<Prepared> {
@@ -183,6 +186,13 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
             continue;
         }
         headers.insert(scope.interpolate(k)?, scope.interpolate(v)?);
+    }
+    // Cabecera por defecto del runtime: se puede sobrescribir o desactivar
+    // desde la solicitud (`disabled_headers`), por eso no la pone el cliente.
+    if !request.header_is_disabled("user-agent")
+        && !headers.keys().any(|k| k.eq_ignore_ascii_case("user-agent"))
+    {
+        headers.insert("User-Agent".into(), USER_AGENT.into());
     }
     let mut query = IndexMap::new();
     for (k, v) in &request.query {
@@ -530,7 +540,6 @@ impl Client {
             std::sync::Arc::new(cookies::PersistentCookies::default())
         };
         let mut builder = reqwest::Client::builder()
-            .user_agent(concat!("harpoon/", env!("CARGO_PKG_VERSION")))
             .timeout(timeout)
             .cookie_provider(jar)
             .danger_accept_invalid_certs(settings.insecure)

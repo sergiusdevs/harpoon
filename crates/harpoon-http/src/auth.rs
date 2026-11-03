@@ -192,6 +192,7 @@ pub async fn oauth2_authorization(
 
     let mut req = http
         .post(&cfg.token_url)
+        .header("User-Agent", crate::USER_AGENT)
         .header("Accept", "application/json")
         .header("Content-Type", "application/x-www-form-urlencoded");
     match cfg.client_auth {

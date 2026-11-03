@@ -14,14 +14,16 @@
 
   interface Props {
     value: string;
-    language?: "json" | "text" | "javascript" | "graphql";
+    language?: "json" | "text" | "javascript" | "graphql" | "headers";
+    /** Ajusta las líneas largas al ancho del editor. */
+    wrap?: boolean;
     schema?: string;
     label?: string;
     readonly?: boolean;
     onchange?: (value: string) => void;
     placeholder?: string;
   }
-  let { value, language = "text", readonly = false, onchange, placeholder = "", schema = "", label = "Editor de código" }: Props = $props();
+  let { value, language = "text", readonly = false, onchange, placeholder = "", schema = "", label = "Editor de código", wrap = false }: Props = $props();
 
   let host: HTMLDivElement;
   let view: EditorView;
@@ -57,12 +59,27 @@
       stream.next(); return "punctuation";
     },
   });
+  // `Nombre: valor` por línea; `//` comenta (desactiva) la línea.
+  const headersLanguage = StreamLanguage.define<{ value: boolean }>({
+    startState: () => ({ value: false }),
+    token(stream, state) {
+      if (stream.sol()) state.value = false;
+      if (stream.sol() && stream.match(/^\s*\/\/.*/)) return "comment";
+      if (!state.value) {
+        if (stream.match(/^[^:=\t]+/)) return "propertyName";
+        if (stream.match(/^\s*[:=\t]\s*/)) { state.value = true; return "punctuation"; }
+      }
+      if (stream.match(/^\{\{[^}]*\}\}/)) return "variableName";
+      stream.next();
+      return "string";
+    },
+  });
   function completeGraphql(context: CompletionContext) {
     const word = context.matchBefore(/[_A-Za-z][_0-9A-Za-z]*/);
     if (!word && !context.explicit) return null;
     return { from: word?.from ?? context.pos, options: graphqlCompletions(schema, context.state.doc.toString(), context.pos), validFor: /^[_0-9A-Za-z]*$/ };
   }
-  const langExt = (l: string) => l === "graphql" ? [graphqlLanguage, autocompletion({ override: [completeGraphql] })] : l === "json" ? [json(), foldGutter()] : l === "javascript" ? [javascript(), foldGutter()] : [];
+  const langExt = (l: string) => l === "headers" ? [headersLanguage] : l === "graphql" ? [graphqlLanguage, autocompletion({ override: [completeGraphql] })] : l === "json" ? [json(), foldGutter()] : l === "javascript" ? [javascript(), foldGutter()] : [];
 
 
   onMount(() => {
@@ -72,6 +89,7 @@
         doc: value,
         extensions: [
           lineNumbers(),
+          ...(wrap ? [EditorView.lineWrapping] : []),
           highlightActiveLine(),
           drawSelection(),
           bracketMatching(),

@@ -82,6 +82,32 @@ fn collection(base_url: &str) -> Collection {
     col
 }
 
+#[test]
+fn user_agent_por_defecto_se_puede_sobrescribir_o_desactivar() {
+    let col = collection("http://localhost");
+    let scope = col.scope(None).unwrap();
+    let mut req = Request::new("ua", Method::Get, "{{base_url}}/");
+
+    let prepared = harpoon_http::prepare(&col, &req, &scope).unwrap();
+    assert_eq!(prepared.headers["User-Agent"], harpoon_http::USER_AGENT);
+
+    req.headers
+        .insert("user-agent".into(), "mi-cliente/1".into());
+    let prepared = harpoon_http::prepare(&col, &req, &scope).unwrap();
+    assert_eq!(prepared.headers["user-agent"], "mi-cliente/1");
+    assert!(!prepared.headers.contains_key("User-Agent"));
+
+    req.headers.clear();
+    req.disabled_headers.push("User-Agent".into());
+    let prepared = harpoon_http::prepare(&col, &req, &scope).unwrap();
+    assert!(
+        !prepared
+            .headers
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("user-agent"))
+    );
+}
+
 #[tokio::test]
 async fn envia_con_auth_heredada_query_y_cuerpo_json() {
     let base = spawn_server();

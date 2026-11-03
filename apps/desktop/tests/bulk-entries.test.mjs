@@ -13,3 +13,9 @@ test('rechaza filas inválidas y nombres duplicados antes de modificar la tabla'
 test('permite borrar todas las filas o conservar un valor vacío', () => {
   assert.deepEqual(parseBulkEntries(''), []); assert.deepEqual(parseBulkEntries('token:\nkey\t\tDescripción'), [{ k: 'token', v: '', d: '' }, { k: 'key', v: '', d: 'Descripción' }]);
 });
+test('las líneas con // quedan desactivadas y se serializan igual', async () => {
+  const { serializeBulkEntries } = await loadTypescript('../src/domain/bulkEntries.ts');
+  assert.deepEqual(parseBulkEntries('Accept: text/html\n// X-Debug: 1\n  //Origin:null'), [{ k: 'Accept', v: 'text/html', d: '' }, { k: 'X-Debug', v: '1', d: '', disabled: true }, { k: 'Origin', v: 'null', d: '', disabled: true }]);
+  assert.equal(serializeBulkEntries({ Accept: 'text/html', 'X-Debug': '1' }, (k) => k === 'X-Debug'), 'Accept: text/html\n//X-Debug: 1');
+  assert.deepEqual(parseBulkEntries('//'), []);
+});
