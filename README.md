@@ -160,6 +160,7 @@ Atajos principales: `⌘↩` enviar · `⌘S` guardar · `⌘N` nueva solicitud 
 | [Auth](docs/auth.md) | Todos los tipos de auth, mTLS y uso en CI |
 | [Secretos](docs/secrets.md) | Dónde vive cada valor y cómo trabajar con Git |
 | [MCP](docs/mcp.md) | Conectar Claude Code, Codex, Cursor… y qué nunca se comparte |
+| [Cambios](CHANGELOG.md) | Qué trae cada versión |
 | [Roadmap](ROADMAP.md) | Lo que viene: llavero del sistema, gRPC, docs HTML, distribución |
 
 ## Desarrollo

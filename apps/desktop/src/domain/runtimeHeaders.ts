@@ -14,8 +14,10 @@ export interface RuntimeHeader {
   overridden: boolean;
 }
 
-/** Igual que `harpoon_http::USER_AGENT`. */
-export const USER_AGENT = "harpoon/0.1.0";
+declare const __APP_VERSION__: string | undefined;
+
+/** Igual que `harpoon_http::USER_AGENT` (la versión la inyecta Vite desde package.json). */
+export const USER_AGENT = `harpoon/${typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"}`;
 
 /** Cabeceras del runtime que la solicitud puede desactivar. */
 export const TOGGLEABLE = ["User-Agent"];
