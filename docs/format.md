@@ -16,8 +16,8 @@ mi-api/
 │   └── prod.toml
 └── requests/
     ├── health.toml
-    └── users/                  # las carpetas organizan y (fase 1) heredan config
-        ├── folder.toml         # (fase 1) auth/cabeceras/vars de la carpeta
+    └── users/                  # las carpetas organizan y heredan configuración
+        ├── folder.toml         # vars, cabeceras, auth y scripts de la carpeta
         ├── list.toml
         └── create.toml
 ```
@@ -155,20 +155,43 @@ manual: Harpoon genera el límite multipart automáticamente. En los scripts,
 - `format` se incrementa solo en cambios incompatibles; `harpoon` migra con `harpoon migrate`.
 - Claves desconocidas se conservan al reescribir (fase 1, `toml_edit`).
 
-### Variables por carpeta
+### Configuración por carpeta (`folder.toml`)
 
-Cada carpeta dentro de `requests/` puede incluir un `folder.toml`:
+Cada carpeta dentro de `requests/` puede incluir un `folder.toml`. Todo lo que
+define se aplica a las solicitudes de esa carpeta y de sus subcarpetas:
 
 ```toml
 [vars]
 api_path = "/api/v1/users"
+
+[headers]
+X-Team = "core"
+Accept = "application/json"
+
+[auth]
+type = "bearer"
+token = "{{admin_token}}"
+
+[scripts]
+pre = 'harpoon.req.headers["X-Client"] = "harpoon";'
+test = 'test("no es 5xx", () => expect(harpoon.res.status).to.be.below(500));'
 ```
 
-Estas variables se aplican a las solicitudes de esa carpeta y sus descendientes.
-La prioridad, de menor a mayor, es colección, carpetas desde la raíz hasta la
-más cercana, entorno y variables de ejecución. Las variables de carpeta se
-versionan con la colección; guarda los secretos en los archivos de entorno privados.
-En la app se editan desde el menú contextual de la carpeta.
+- **Variables:** la prioridad, de menor a mayor, es colección, carpetas desde la
+  raíz hasta la más cercana, entorno y variables de ejecución.
+- **Cabeceras:** se acumulan de la carpeta más externa a la más interna; si dos
+  carpetas definen la misma (sin distinguir mayúsculas), gana la interior. Una
+  solicitud puede sustituirla con su propia cabecera o desactivarla en
+  `disabled_headers`.
+- **Auth:** si la solicitud usa `inherit`, se toma la de la carpeta más cercana
+  que defina una (`inherit` en la carpeta pasa al nivel superior) y, si ninguna
+  lo hace, la de `harpoon.toml`.
+- **Scripts:** se ejecutan entre los de la colección y los de la solicitud,
+  de la carpeta más externa a la más interna (ver [scripting](scripting.md)).
+
+`folder.toml` se versiona con la colección: usa `{{variables}}` y guarda los
+valores reales como secretos. `harpoon check` también revisa estos archivos. En la
+app se edita desde el menú contextual de la carpeta → **Ajustes**.
 
 ## Compartir entre usuarios de Harpoon
 

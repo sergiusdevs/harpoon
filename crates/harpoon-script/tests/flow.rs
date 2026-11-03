@@ -132,3 +132,47 @@ async fn script_post_roto_no_impide_la_respuesta() {
     assert_eq!(exec.tests.len(), 1);
     assert!(exec.tests[0].name.contains("script post"));
 }
+
+#[tokio::test]
+async fn la_carpeta_aporta_auth_cabeceras_y_scripts_en_orden() {
+    let base = spawn_server();
+    let tmp = tempfile::tempdir().unwrap();
+    let mut col = Collection::init(tmp.path(), "flow").unwrap();
+    col.meta.vars.insert("base_url".into(), base);
+    col.meta.default_environment = None;
+    col.meta.scripts.pre = "console.log('colección');".into();
+    col.create_folder("api").unwrap();
+    col.save_folder_settings(
+        "api",
+        [("X-Team".to_owned(), "core".to_owned())].into(),
+        Auth::Bearer {
+            token: "tok-123".into(),
+        },
+        harpoon_core::Scripts {
+            pre: "console.log('carpeta');".into(),
+            test: "test('de carpeta', () => expect(harpoon.res.status).to.equal(200));".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let mut me = Request::new("me", Method::Get, "{{base_url}}/me");
+    me.scripts.pre = "console.log('solicitud');".into();
+
+    let client = Client::for_collection(&col).unwrap();
+    let exec = harpoon_script::runner::execute_for_key(
+        &client,
+        &col,
+        &me,
+        None,
+        indexmap::IndexMap::new(),
+        "api/me",
+    )
+    .await
+    .unwrap();
+    assert_eq!(exec.response.status, 200, "la auth de la carpeta se envía");
+    assert_eq!(exec.prepared.headers["Authorization"], "Bearer tok-123");
+    assert_eq!(exec.prepared.headers["X-Team"], "core");
+    assert_eq!(exec.logs, vec!["colección", "carpeta", "solicitud"]);
+    assert!(exec.passed, "{:?}", exec.tests);
+    assert_eq!(exec.tests.len(), 1);
+}

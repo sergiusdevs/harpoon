@@ -228,6 +228,20 @@ fn save_folder_vars(
     Ok(col.into())
 }
 
+#[tauri::command]
+fn save_folder_settings(
+    root: PathBuf,
+    folder: String,
+    headers: IndexMap<String, String>,
+    auth: harpoon_core::Auth,
+    scripts: harpoon_core::Scripts,
+) -> Result<CollectionDto, String> {
+    let mut col = load(&root)?;
+    col.save_folder_settings(&folder, headers, auth, scripts)
+        .map_err(|e| e.to_string())?;
+    Ok(col.into())
+}
+
 /// Exporta un entorno: todas sus variables, los secretos con valor vacío.
 #[tauri::command]
 fn export_environment(
@@ -792,6 +806,7 @@ pub fn run() {
             devtools::devtools_snapshot,
             devtools::devtools_clear,
             save_folder_vars,
+            save_folder_settings,
             resolve_url,
             save_environment,
             delete_environment,

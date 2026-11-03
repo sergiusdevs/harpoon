@@ -28,6 +28,7 @@ Sin cuenta. Sin nube. Sin telemetría.
 | **Protocolos** | REST (todos los métodos; JSON, texto, XML, binario, formulario y multipart), GraphQL, WebSocket y SSE |
 | **Auth** | Basic, Bearer, API key, Digest y OAuth2 (client credentials, password, refresh token) con caché de tokens |
 | **Red** | TLS con rustls, CA propia, mTLS, proxy con `NO_PROXY`, timeouts y redirecciones |
+| **Carpetas** | Cada carpeta puede definir variables, cabeceras, auth y scripts que heredan sus solicitudes y subcarpetas |
 | **Variables** | Por colección, carpeta, entorno y ejecución; dinámicas (`{{$uuid}}`, `{{$timestamp}}`, `{{$randomInt 1 10}}`…) |
 | **Pruebas** | Aserciones declarativas `[expect]` y scripts JS `pre` / `post` / `test` con `expect` estilo Chai |
 | **Secretos** | Fuera de Git (`*.secrets.toml`), por variable de entorno `HARPOON_<NOMBRE>` y detector de secretos al guardar |
@@ -124,7 +125,7 @@ Atajos principales: `⌘↩` enviar · `⌘S` guardar · `⌘N` nueva solicitud 
 | [Scripts](docs/scripting.md) | API `harpoon.req` / `res` / `vars`, `test` y `expect` |
 | [Auth](docs/auth.md) | Todos los tipos de auth, mTLS y uso en CI |
 | [Secretos](docs/secrets.md) | Dónde vive cada valor y cómo trabajar con Git |
-| [Roadmap](ROADMAP.md) | Lo que viene: herencia por carpeta, gRPC, docs HTML, distribución |
+| [Roadmap](ROADMAP.md) | Lo que viene: llavero del sistema, gRPC, docs HTML, distribución |
 
 ## Desarrollo
 

@@ -1,6 +1,7 @@
 // Cabeceras que se envían aunque la solicitud no las declare: las que añade
 // Harpoon a partir de Auth y del cuerpo, y las del cliente HTTP (reqwest/hyper).
 import type { Auth, Body, Request } from "./types";
+import type { InheritedHeader } from "./folderInheritance";
 
 export interface RuntimeHeader {
   name: string;
@@ -52,11 +53,15 @@ function hostOf(url: string): string {
   }
 }
 
-export function runtimeHeaders(request: Request, collectionAuth: Auth, resolvedUrl: string): RuntimeHeader[] {
+/**
+ * `inherited`: auth que se usa con "heredar" y de dónde sale (`inheritedAuth`).
+ * `folderHeaders`: cabeceras de las carpetas de la solicitud (`inheritedHeaders`).
+ */
+export function runtimeHeaders(request: Request, inherited: { auth: Auth; source: string }, resolvedUrl: string, folderHeaders: InheritedHeader[] = []): RuntimeHeader[] {
   const disabled = request.disabled_headers ?? [];
-  const rows: Omit<RuntimeHeader, "overridden">[] = [];
-  const auth = authHeader(request.auth.type === "inherit" ? collectionAuth : request.auth);
-  if (auth) rows.push({ ...auth, source: request.auth.type === "inherit" ? "Auth heredada de la colección" : "Pestaña Auth", toggleable: false });
+  const rows: Omit<RuntimeHeader, "overridden">[] = folderHeaders.map((h) => ({ ...h, toggleable: true }));
+  const auth = authHeader(request.auth.type === "inherit" ? inherited.auth : request.auth);
+  if (auth) rows.push({ ...auth, source: request.auth.type === "inherit" ? `Auth heredada de ${inherited.source}` : "Pestaña Auth", toggleable: false });
   const type = contentType(request.body);
   if (type) rows.push({ name: "Content-Type", value: type, source: "Tipo de cuerpo", toggleable: false });
   rows.push(
@@ -68,9 +73,10 @@ export function runtimeHeaders(request: Request, collectionAuth: Auth, resolvedU
   return rows.map((row) => ({ ...row, overridden: has(request.headers, disabled, row.name) }));
 }
 
-/** Nombres desactivados que corresponden a cabeceras del runtime (no a filas de la tabla). */
-export function disabledRuntime(request: Request): string[] {
+/** Nombres desactivados que corresponden a cabeceras heredadas o del runtime (no a filas de la tabla). */
+export function disabledRuntime(request: Request, folderHeaders: InheritedHeader[] = []): string[] {
+  const toggleable = [...TOGGLEABLE, ...folderHeaders.map((h) => h.name)];
   return (request.disabled_headers ?? []).filter((name) =>
-    TOGGLEABLE.some((t) => t.toLowerCase() === name.toLowerCase())
+    toggleable.some((t) => t.toLowerCase() === name.toLowerCase())
     && !Object.keys(request.headers).some((key) => key.toLowerCase() === name.toLowerCase()));
 }

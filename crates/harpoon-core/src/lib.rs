@@ -23,7 +23,7 @@ pub mod vars;
 
 pub use collection::Collection;
 pub use error::Error;
-pub use model::{Auth, Body, Environment, Expect, Method, Request, RequestType, Settings};
+pub use model::{Auth, Body, Environment, Expect, Method, Request, RequestType, Scripts, Settings};
 pub use vars::Scope;
 
 /// Resultado estándar del crate.

@@ -351,6 +351,15 @@ pub fn scan_collection(c: &Collection) -> Vec<Finding> {
         };
         let vars = public(&config.vars, &config.secrets);
         s.pairs("variable", vars.iter().map(|(k, v)| (k, v)));
+        s.pairs("header", &config.headers);
+        s.auth("", &config.auth);
+        for (phase, script) in [
+            ("pre", &config.scripts.pre),
+            ("post", &config.scripts.post),
+            ("test", &config.scripts.test),
+        ] {
+            s.text(&format!("script {phase}"), script, "token");
+        }
         out.extend(s.out);
     }
     for (name, env) in &c.environments {

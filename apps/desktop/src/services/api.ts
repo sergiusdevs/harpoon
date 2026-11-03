@@ -5,7 +5,7 @@ import type { Collection, CollectionMeta, Environment, Exchange, HistoryEntry, M
 import type { CurlPrepared } from "../domain/curlExport";
 import { folderChain } from "../domain/paths";
 export { folderChain } from "../domain/paths";
-import { emptyRequest, enabledHeaders, normalizeCollection } from "../domain/types";
+import { emptyFolderConfig, emptyRequest, enabledHeaders, normalizeCollection } from "../domain/types";
 
 export interface SharePreview { name: string; warnings: string[] }
 export interface EnvironmentPreview { name: string; variables: number; secrets: string[]; warnings: string[] }
@@ -37,6 +37,8 @@ export interface Api {
   gitInit(root: string): Promise<GitStatus>;
   listFolders(root: string): Promise<string[]>;
   saveFolderVars(root: string, folder: string, vars: Record<string, string>, secrets?: string[]): Promise<Collection>;
+  /** Cabeceras, auth y scripts que heredan las solicitudes de la carpeta. */
+  saveFolderSettings(root: string, folder: string, settings: Pick<import("../domain/types").FolderConfig, "headers" | "auth" | "scripts">): Promise<Collection>;
   /** Exporta un entorno (pide destino); los secretos salen vacíos. Devuelve la ruta o null si se cancela. */
   exportEnvironment(root: string, name: string, format: "postman" | "harpoon"): Promise<string | null>;
   /** Lee un entorno de Postman (JSON) o Harpoon (TOML) sin guardarlo. */
@@ -114,6 +116,7 @@ async function tauriApi(): Promise<Api> {
     gitInit: (root) => invoke<GitStatus>("git_init", { root }),
     listFolders: (root) => invoke<string[]>("list_folders", { root }),
     saveFolderVars: (root, folder, vars, secrets) => col("save_folder_vars", { root, folder, vars, secrets: secrets ?? null }),
+    saveFolderSettings: (root, folder, { headers, auth, scripts }) => col("save_folder_settings", { root, folder, headers, auth, scripts }),
     exportEnvironment: async (root, name, format) => {
       const { save } = await import("@tauri-apps/plugin-dialog");
       const path = await save({
@@ -329,7 +332,11 @@ function mockApi(): Api {
     gitStatus: async () => ({ ...git }),
     gitInit: async () => { git = { available: true, initialized: true, branch: "main" }; return { ...git }; },
     saveFolderVars: async (_root, folder, vars, secrets) => {
-      col.folder_configs[folder] = { vars: structuredClone(vars), secrets: secrets ?? col.folder_configs[folder]?.secrets ?? [] };
+      col.folder_configs[folder] = { ...emptyFolderConfig(), ...col.folder_configs[folder], vars: structuredClone(vars), secrets: secrets ?? col.folder_configs[folder]?.secrets ?? [] };
+      return snapshot();
+    },
+    saveFolderSettings: async (_root, folder, settings) => {
+      col.folder_configs[folder] = { ...emptyFolderConfig(), ...col.folder_configs[folder], ...structuredClone(settings) };
       return snapshot();
     },
     exportEnvironment: async () => { throw new Error("Solo disponible en la app de escritorio"); },

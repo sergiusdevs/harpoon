@@ -103,7 +103,10 @@ fn error_de_sintaxis_y_timeout() {
             &IndexMap::new(),
         )
         .unwrap_err();
-    assert!(matches!(err, Error::Script { phase: "pre", .. }), "{err}");
+    assert!(
+        matches!(&err, Error::Script { phase, .. } if phase == "pre"),
+        "{err}"
+    );
 
     let err = e
         .run(

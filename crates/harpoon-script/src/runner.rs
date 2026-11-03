@@ -130,14 +130,11 @@ pub fn prepare_for_export(
     let base_scope = collection.scope_for_request(environment, key)?;
     let env = base_scope.flatten();
     let mut vars = collection.load_runtime_vars();
-    let mut req = request.clone();
+    let mut req = collection.with_folder_inheritance(key, request);
     let engine = Engine::new()?;
     let mut script_req = to_script_request(&req);
-    for (phase, script) in [
-        ("pre (colección)", &collection.meta.scripts.pre),
-        ("pre", &request.scripts.pre),
-    ] {
-        let out = engine.run(phase, script, Some(&script_req), None, &vars, &env)?;
+    for (phase, script) in phases(collection, key, request, Phase::Pre) {
+        let out = engine.run(&phase, script, Some(&script_req), None, &vars, &env)?;
         if let Some(r) = out.req {
             script_req = r;
         }
@@ -180,15 +177,12 @@ pub async fn execute_for_key(
 
     // ---- pre ---- (el motor se crea y se destruye dentro del bloque: no es
     // `Send`, así que no puede sobrevivir al `await` del envío)
-    let mut req = request.clone();
+    let mut req = collection.with_folder_inheritance(key, request);
     {
         let engine = Engine::new()?;
         let mut script_req = to_script_request(&req);
-        for (phase, script) in [
-            ("pre (colección)", &collection.meta.scripts.pre),
-            ("pre", &request.scripts.pre),
-        ] {
-            let out = engine.run(phase, script, Some(&script_req), None, &vars, &env)?;
+        for (phase, script) in phases(collection, key, request, Phase::Pre) {
+            let out = engine.run(&phase, script, Some(&script_req), None, &vars, &env)?;
             if let Some(r) = out.req {
                 script_req = r;
             }
@@ -220,14 +214,12 @@ pub async fn execute_for_key(
             elapsed_ms: response.elapsed_ms,
             size: response.size,
         };
-        for (phase, script) in [
-            ("post (colección)", &collection.meta.scripts.post),
-            ("post", &request.scripts.post),
-            ("test (colección)", &collection.meta.scripts.test),
-            ("test", &request.scripts.test),
-        ] {
+        let after = phases(collection, key, request, Phase::Post)
+            .into_iter()
+            .chain(phases(collection, key, request, Phase::Test));
+        for (phase, script) in after {
             match engine.run(
-                phase,
+                &phase,
                 script,
                 Some(&script_req),
                 Some(&response_view),
@@ -286,4 +278,41 @@ pub async fn execute_persistent_for_key(
     let exec = execute_for_key(client, collection, request, environment, vars, key).await?;
     collection.save_runtime_vars(&exec.vars)?;
     Ok(exec)
+}
+
+#[derive(Clone, Copy)]
+enum Phase {
+    Pre,
+    Post,
+    Test,
+}
+
+/// Scripts de una fase en orden: colección, carpetas (de fuera hacia dentro) y solicitud.
+fn phases<'a>(
+    collection: &'a Collection,
+    key: &str,
+    request: &'a Request,
+    phase: Phase,
+) -> Vec<(String, &'a str)> {
+    let pick = |s: &'a harpoon_core::Scripts| -> &'a str {
+        match phase {
+            Phase::Pre => &s.pre,
+            Phase::Post => &s.post,
+            Phase::Test => &s.test,
+        }
+    };
+    let name = match phase {
+        Phase::Pre => "pre",
+        Phase::Post => "post",
+        Phase::Test => "test",
+    };
+    let mut out = vec![(
+        format!("{name} (colección)"),
+        pick(&collection.meta.scripts),
+    )];
+    for (folder, config) in collection.folder_chain(key) {
+        out.push((format!("{name} (carpeta {folder})"), pick(&config.scripts)));
+    }
+    out.push((name.to_owned(), pick(&request.scripts)));
+    out
 }

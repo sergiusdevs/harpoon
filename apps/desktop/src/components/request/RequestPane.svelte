@@ -12,6 +12,7 @@
   import KeyValue from "../common/KeyValue.svelte";
   import RuntimeHeaders from "./RuntimeHeaders.svelte";
   import { disabledRuntime, runtimeHeaders } from "../../domain/runtimeHeaders";
+  import { inheritedAuth, inheritedHeaders } from "../../domain/folderInheritance";
   import AuthForm from "./AuthForm.svelte";
   import MethodBadge from "../common/MethodBadge.svelte";
   import VariableInput from "../common/VariableInput.svelte";
@@ -53,6 +54,9 @@
 
   const req = $derived(store.draft);
   const type = $derived(req ? requestType(req) : "http");
+  const folders = $derived(store.selected ? folderChain(store.selected) : []);
+  const folderHeaders = $derived(store.collection ? inheritedHeaders(store.collection, folders) : []);
+  const parentAuth = $derived(store.collection ? inheritedAuth(store.collection, folders) : { auth: { type: "none" } as Auth, source: "la colección" });
   const currentSession = $derived(streams.sessions.find((session) => session.root === store.collection?.root && session.key === store.selected));
   const isStream = $derived(type === "websocket" || type === "sse");
   $effect(() => {
@@ -283,11 +287,11 @@
         <KeyValue descriptions={req.query_descriptions ?? {}} onDescriptionsChange={(values) => set("query_descriptions", values)} {variables} disabledKeys={req.disabled_query} onDisabledChange={(keys) => set("disabled_query", keys)} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" secretLocation={(name) => `parámetro ${name}`} />
       {:else if tab === "headers"}
         {#if type === "http" || type === "graphql"}
-          <RuntimeHeaders headers={runtimeHeaders(req, store.collection?.meta.auth ?? { type: "none" }, resolvedUrl)} disabled={disabledRuntime(req)}
+          <RuntimeHeaders headers={runtimeHeaders(req, parentAuth, resolvedUrl, folderHeaders)} disabled={disabledRuntime(req, folderHeaders)}
             ontoggle={(name, enabled) => set("disabled_headers", enabled ? (req.disabled_headers ?? []).filter((k) => k.toLowerCase() !== name.toLowerCase()) : [...(req.disabled_headers ?? []), name])} />
         {/if}
         <p class="table-label">Cabeceras de la solicitud <span class="muted">({count(req.headers)})</span></p>
-        <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", [...keys, ...disabledRuntime(req).filter((name) => !keys.some((k) => k.toLowerCase() === name.toLowerCase()))])} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} secretLocation={(name) => `header ${name}`} />
+        <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", [...keys, ...disabledRuntime(req, folderHeaders).filter((name) => !keys.some((k) => k.toLowerCase() === name.toLowerCase()))])} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} secretLocation={(name) => `header ${name}`} />
       {:else if tab === "body"}
         <div class="body">
           {#if bodyKind === "json"}<div class="body-bar"><button class="btn small" onclick={formatJson}>Formatear JSON</button>{#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}</div>{/if}
@@ -331,7 +335,7 @@
           auth={req.auth}
           onchange={(a: Auth) => set("auth", a)}
           secretActions
-          inheritHint={`Usa la auth definida en harpoon.toml (${store.collection?.meta.auth.type ?? "none"}).`}
+          inheritHint={`Usa la auth de ${parentAuth.source} (${parentAuth.auth.type}).`}
         />
       {:else if tab === "expect"}
         <div class="form">

@@ -22,7 +22,7 @@ use walkdir::WalkDir;
 
 use crate::{
     Error, Result,
-    model::{CollectionMeta, Environment, Request},
+    model::{Auth, CollectionMeta, Environment, Request, Scripts},
     vars::Scope,
 };
 
@@ -45,8 +45,29 @@ pub struct FolderConfig {
     /// Variables de carpeta secretas (valor en `.harpoon/secrets.toml`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secrets: Vec<String>,
+    /// Cabeceras que heredan todas las solicitudes de la carpeta (y subcarpetas).
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub headers: IndexMap<String, String>,
+    /// Auth de la carpeta; `inherit` usa la de la carpeta superior o la colección.
+    #[serde(default, skip_serializing_if = "is_inherit")]
+    pub auth: Auth,
+    /// Scripts que se ejecutan entre los de la colección y los de la solicitud.
+    #[serde(default, skip_serializing_if = "Scripts::is_empty")]
+    pub scripts: Scripts,
     #[serde(flatten)]
     pub other: IndexMap<String, toml::Value>,
+}
+
+fn is_inherit(auth: &Auth) -> bool {
+    matches!(auth, Auth::Inherit)
+}
+
+/// Carpetas que contienen `key`, de la más externa a la más interna
+/// (`"a/b/req"` → `["a", "a/b"]`).
+#[must_use]
+pub fn ancestor_folders(key: &str) -> Vec<String> {
+    let parts: Vec<&str> = key.split('/').collect();
+    (1..parts.len()).map(|n| parts[..n].join("/")).collect()
 }
 
 /// Una colección cargada en memoria.
@@ -547,6 +568,74 @@ impl Collection {
         write_toml(&dir.join("folder.toml"), &public)?;
         self.folder_configs.insert(folder.to_owned(), config);
         self.write_local_secrets()
+    }
+
+    /// Configuración de las carpetas que contienen `key`, de fuera hacia dentro.
+    #[must_use]
+    pub fn folder_chain(&self, key: &str) -> Vec<(String, &FolderConfig)> {
+        ancestor_folders(key)
+            .into_iter()
+            .filter_map(|folder| self.folder_configs.get(&folder).map(|c| (folder, c)))
+            .collect()
+    }
+
+    /// Solicitud con lo heredado de sus carpetas: cabeceras (las de la solicitud
+    /// mandan y `disabled_headers` también desactiva las heredadas) y, si su auth
+    /// es `inherit`, la de la carpeta más cercana que defina una.
+    #[must_use]
+    pub fn with_folder_inheritance(&self, key: &str, request: &Request) -> Request {
+        let chain = self.folder_chain(key);
+        if chain.is_empty() {
+            return request.clone();
+        }
+        let mut headers: IndexMap<String, String> = IndexMap::new();
+        for (_, config) in &chain {
+            for (name, value) in &config.headers {
+                headers.retain(|k, _| !k.eq_ignore_ascii_case(name));
+                headers.insert(name.clone(), value.clone());
+            }
+        }
+        headers.retain(|k, _| {
+            !request
+                .headers
+                .keys()
+                .any(|own| own.eq_ignore_ascii_case(k))
+                && !request.header_is_disabled(k)
+        });
+        let mut out = request.clone();
+        headers.extend(request.headers.clone());
+        out.headers = headers;
+        if matches!(out.auth, Auth::Inherit)
+            && let Some((_, config)) = chain.iter().rev().find(|(_, c)| !is_inherit(&c.auth))
+        {
+            out.auth = config.auth.clone();
+        }
+        out
+    }
+
+    /// Guarda cabeceras, auth y scripts de una carpeta conservando sus variables.
+    pub fn save_folder_settings(
+        &mut self,
+        folder: &str,
+        headers: IndexMap<String, String>,
+        auth: Auth,
+        scripts: Scripts,
+    ) -> Result<()> {
+        let folder = validate_key(folder)?;
+        let dir = self.root.join(REQUESTS_DIR).join(folder);
+        if !dir.is_dir() {
+            return Err(Error::Io {
+                path: dir,
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "la carpeta no existe"),
+            });
+        }
+        let mut config = self.folder_configs.get(folder).cloned().unwrap_or_default();
+        config.headers = headers;
+        config.auth = auth;
+        config.scripts = scripts;
+        let (vars, secrets) = (config.vars.clone(), config.secrets.clone());
+        self.folder_configs.insert(folder.to_owned(), config);
+        self.save_folder_config(folder, vars, secrets)
     }
 
     /// Construye el ámbito para una solicitud, con las carpetas entre colección y entorno.

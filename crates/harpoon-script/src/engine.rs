@@ -16,12 +16,9 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("error en el script ({phase}): {message}")]
-    Script {
-        phase: &'static str,
-        message: String,
-    },
+    Script { phase: String, message: String },
     #[error("el script ({0}) superó el tiempo máximo de {1:?}")]
-    Timeout(&'static str, Duration),
+    Timeout(String, Duration),
     #[error("error interno del motor de scripts: {0}")]
     Engine(String),
 }
@@ -103,7 +100,7 @@ impl Engine {
     /// `vars` son las variables de ejecución, que el script puede cambiar.
     pub fn run(
         &self,
-        phase: &'static str,
+        phase: &str,
         script: &str,
         req: Option<&ScriptRequest>,
         res: Option<&ScriptResponse<'_>>,
@@ -146,8 +143,13 @@ impl Engine {
 
         match result {
             Ok(json) => serde_json::from_str(&json).map_err(|e| Error::Engine(e.to_string())),
-            Err(message) if message.contains("interrupted") => Err(Error::Timeout(phase, TIMEOUT)),
-            Err(message) => Err(Error::Script { phase, message }),
+            Err(message) if message.contains("interrupted") => {
+                Err(Error::Timeout(phase.to_owned(), TIMEOUT))
+            }
+            Err(message) => Err(Error::Script {
+                phase: phase.to_owned(),
+                message,
+            }),
         }
     }
 }

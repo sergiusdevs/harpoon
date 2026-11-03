@@ -75,6 +75,7 @@ pub async fn start_stream(
         .scope_for_request(env.as_deref(), &key)
         .map_err(|e| e.to_string())?
         .with_layer(collection.load_runtime_vars());
+    let request = collection.with_folder_inheritance(&key, &request);
     let prepared =
         harpoon_http::prepare(&collection, &request, &scope).map_err(|e| e.to_string())?;
     let is_ws = match protocol.as_str() {

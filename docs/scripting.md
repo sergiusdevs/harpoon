@@ -22,11 +22,14 @@ test("tiene usuario", () => expect(harpoon.res.json()).to.have.property("user"))
 ## Orden de ejecución
 
 ```
-pre (colección) → pre (solicitud) → interpolación {{vars}} → HTTP
-  → post (colección) → post (solicitud)
-  → test (colección) → test (solicitud)
+pre (colección) → pre (carpetas) → pre (solicitud) → interpolación {{vars}} → HTTP
+  → post (colección) → post (carpetas) → post (solicitud)
+  → test (colección) → test (carpetas) → test (solicitud)
   → aserciones [expect]
 ```
+
+Las carpetas van de la más externa a la más interna (`api` antes que `api/admin`).
+En los errores y la consola aparecen como `pre (carpeta api/admin)`.
 
 Un error en `pre` aborta el envío. Un error en `post`/`test` no: la respuesta se
 muestra igual y el fallo aparece como un test llamado `script post` (o `script test`).

@@ -38,7 +38,7 @@
   <label>
     <span>Tipo</span>
     <select value={auth.type} onchange={(e) => setKind(e.currentTarget.value as Auth["type"])}>
-      {#if allowInherit}<option value="inherit">Heredar de la colección</option>{/if}
+      {#if allowInherit}<option value="inherit">Heredar</option>{/if}
       <option value="none">Ninguna</option>
       <option value="basic">Basic</option>
       <option value="bearer">Bearer</option>

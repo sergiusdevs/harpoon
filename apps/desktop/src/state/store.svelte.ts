@@ -8,7 +8,7 @@ import { streams } from "./streams.svelte";
 import { api, folderChain } from "../services/api";
 import { themes, type Theme } from "../domain/themes";
 import { interfaceFonts, editorFonts, type InterfaceFont, type EditorFont } from "../domain/fonts";
-import { convertRequestType, newTypedRequest, requestType, type RequestType, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type MissingSecret, type Request, type SecretFinding, type SecretScope } from "../domain/types";
+import { convertRequestType, newTypedRequest, requestType, type RequestType, type Collection, type CollectionMeta, type Environment, type Exchange, type FolderConfig, type HistoryEntry, type Method, type MissingSecret, type Request, type SecretFinding, type SecretScope } from "../domain/types";
 import { applySecret } from "../domain/secrets";
 import { splitUrl } from "../domain/urlQuery";
 
@@ -443,7 +443,9 @@ class Store {
           if (key.startsWith(folder + "/")) await a.saveRequest(col.root, remap(key), structuredClone($state.snapshot(req)));
         }
         for (const [f, cfg] of Object.entries(col.folder_configs ?? {})) {
-          if (inside(f) && Object.keys(cfg.vars ?? {}).length) await a.saveFolderVars(col.root, remap(f), { ...cfg.vars });
+          if (!inside(f)) continue;
+          if (Object.keys(cfg.vars ?? {}).length) await a.saveFolderVars(col.root, remap(f), { ...cfg.vars });
+          await a.saveFolderSettings(col.root, remap(f), structuredClone($state.snapshot({ headers: cfg.headers, auth: cfg.auth, scripts: cfg.scripts })));
         }
         await this.adopt(await a.openCollection(col.root), { select: this.selected ?? undefined });
         this.status = { kind: "ok", text: `Clonada en ${target}/` };
@@ -618,6 +620,11 @@ class Store {
   async deleteEnvironment(name: string) {
     if (!this.collection) return;
     const col = await (await api).deleteEnvironment(this.collection.root, name);
+    await this.adopt(col);
+  }
+
+  async saveFolderSettings(folder: string, settings: Pick<FolderConfig, "headers" | "auth" | "scripts">) {
+    const col = await (await api).saveFolderSettings(this.collection!.root, folder, settings);
     await this.adopt(col);
   }
 

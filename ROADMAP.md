@@ -29,7 +29,7 @@ Harpoon recorta y reordena para ser **totalmente offline**:
 
 ## Fase 1 — Núcleo completo
 
-- Herencia de `auth`, cabeceras y variables por carpeta (`requests/<carpeta>/folder.toml`).
+- ✅ Herencia de variables, cabeceras, `auth` y scripts por carpeta (`requests/<carpeta>/folder.toml`).
 - Tipos de variable (texto, número, booleano, objeto/JSON) y funciones dinámicas
   (`{{$uuid}}`, `{{$timestamp}}`, `{{$randomInt}}`).
 - Secretos: `*.secrets.toml`, `HARPOON_<VAR>`, llavero del SO (`keyring`).
@@ -56,8 +56,7 @@ local de ejecuciones y reporter HTML (van con la app).
 Hecho: `harpoon-script` con QuickJS (`rquickjs`), límites de memoria/tiempo,
 sin E/S; `pre`/`post`/`test` en solicitud y colección; `expect` estilo Chai;
 variables de ejecución persistentes en `.harpoon/vars.toml`; integrado en CLI y
-app (pestañas Scripts/Tests, Consola). Pendiente: scripts por carpeta
-(`folder.toml`), que llega con la herencia por carpeta de la fase 1.
+app (pestañas Scripts/Tests, Consola); scripts por carpeta en `folder.toml`.
 
 Diseño original:
 

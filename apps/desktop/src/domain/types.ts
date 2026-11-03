@@ -167,6 +167,15 @@ export interface FolderConfig {
   vars: Record<string, string>;
   /** Variables de carpeta secretas (valor en `.harpoon/secrets.toml`). */
   secrets: string[];
+  /** Cabeceras que heredan las solicitudes de la carpeta y sus subcarpetas. */
+  headers: Record<string, string>;
+  /** `inherit` usa la auth de la carpeta superior o de la colección. */
+  auth: Auth;
+  scripts: Scripts;
+}
+
+export function emptyFolderConfig(): FolderConfig {
+  return { vars: {}, secrets: [], headers: {}, auth: { type: "inherit" }, scripts: { pre: "", post: "", test: "" } };
 }
 
 /** Posible secreto en un archivo versionado (lo detecta `harpoon_core::scan`). */
@@ -278,7 +287,7 @@ export function normalizeCollection(c: Collection): Collection {
     scripts: Object.assign({ pre: "", post: "", test: "" }, c.meta.scripts ?? {}),
   };
   const folder_configs: Record<string, FolderConfig> = {};
-  for (const [k, f] of Object.entries(c.folder_configs ?? {})) folder_configs[k] = { ...f, vars: f?.vars ?? {}, secrets: f?.secrets ?? [] };
+  for (const [k, f] of Object.entries(c.folder_configs ?? {})) folder_configs[k] = { ...f, vars: f?.vars ?? {}, secrets: f?.secrets ?? [], headers: f?.headers ?? {}, auth: normalizeAuth(f?.auth), scripts: { pre: f?.scripts?.pre ?? "", post: f?.scripts?.post ?? "", test: f?.scripts?.test ?? "" } };
   return { ...c, meta, environments, requests, folder_configs };
 }
 
