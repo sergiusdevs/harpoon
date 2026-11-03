@@ -1,0 +1,9 @@
+name = "Crear usuario"
+type = "http"
+method = "POST"
+url = "{{base_url}}/api/users"
+[body]
+type = "json"
+json = '{"name":"Grace"}'
+[expect]
+status = 201

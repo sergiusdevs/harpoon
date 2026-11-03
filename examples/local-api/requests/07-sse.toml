@@ -1,0 +1,15 @@
+name = "Eventos en directo"
+type = "sse"
+method = "GET"
+url = "{{base_url}}/events?source=harpoon"
+
+[headers]
+Accept = "text/event-stream"
+
+[auth]
+type = "inherit"
+
+[body]
+type = "none"
+
+[scripts]

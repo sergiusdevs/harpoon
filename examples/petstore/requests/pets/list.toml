@@ -1,0 +1,14 @@
+name = "Listar mascotas"
+method = "GET"
+url = "{{base_url}}/{{api_version}}/pet/findByStatus"
+docs = "Devuelve las mascotas con el estado indicado."
+
+[query]
+status = "available"
+
+[headers]
+Accept = "application/json"
+
+[expect]
+status = 200
+headers = { Content-Type = "application/json" }

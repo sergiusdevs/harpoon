@@ -1,0 +1,6 @@
+name = "Recurso con cookie"
+type = "http"
+method = "GET"
+url = "{{base_url}}/session"
+[expect]
+status = 200

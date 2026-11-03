@@ -1,0 +1,5 @@
+secrets = ["api_key"]
+
+[vars]
+base_url = "https://petstore.example.com"
+# api_key se define en prod.secrets.toml (no versionado) o en HARPOON_API_KEY

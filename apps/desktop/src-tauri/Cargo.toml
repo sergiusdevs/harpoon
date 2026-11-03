@@ -1,0 +1,42 @@
+[package]
+name = "harpoon-desktop"
+description = "Harpoon — aplicación de escritorio (Tauri)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "harpoon_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+harpoon-core.workspace = true
+harpoon-mock.workspace = true
+harpoon-http.workspace = true
+harpoon-script.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+futures-util = { version = "0.3.34", features = ["sink"] }
+tokio = { workspace = true, features = ["sync", "net", "io-util"] }
+url = "2"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "tls12"] }
+rustls-pemfile = "2"
+webpki-roots = "1"
+hyper-util = { version = "0.1", features = ["client-proxy"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

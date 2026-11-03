@@ -1,0 +1,9 @@
+name = "Validación de campos"
+type = "http"
+method = "POST"
+url = "{{base_url}}/api/users"
+[body]
+type = "json"
+json = '{"name":""}'
+[expect]
+status = 400

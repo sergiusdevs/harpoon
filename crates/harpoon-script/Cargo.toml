@@ -1,0 +1,24 @@
+[package]
+name = "harpoon-script"
+description = "Motor de scripts (JavaScript embebido) y pipeline de ejecución de Harpoon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+harpoon-core.workspace = true
+harpoon-http.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+rquickjs.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+tokio.workspace = true
+
+[lints]
+workspace = true

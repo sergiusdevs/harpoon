@@ -1,0 +1,10 @@
+name = "Spring Security · Basic"
+type = "http"
+method = "GET"
+url = "{{base_url}}/api/private"
+[auth]
+type = "basic"
+username = "demo"
+password = "secret"
+[expect]
+status = 200

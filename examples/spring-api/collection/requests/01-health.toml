@@ -1,0 +1,6 @@
+name = "Estado de Spring"
+type = "http"
+method = "GET"
+url = "{{base_url}}/api/health"
+[expect]
+status = 200

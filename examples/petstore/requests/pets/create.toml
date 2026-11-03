@@ -1,0 +1,26 @@
+name = "Crear mascota"
+method = "POST"
+url = "{{base_url}}/{{api_version}}/pet"
+
+[headers]
+Content-Type = "application/json"
+
+[body]
+type = "json"
+json = '''
+{ "name": "Firulais", "status": "available" }
+'''
+
+[expect]
+status = 200
+
+[scripts]
+pre = 'harpoon.req.headers["X-Request-Id"] = "req-" + Date.now();'
+post = """
+harpoon.vars.set("pet_id", harpoon.res.json().id);
+console.log("pet_id =", harpoon.vars.get("pet_id"));
+"""
+test = """
+test("devuelve id numérico", () => expect(harpoon.res.json().id).to.be.a("number"));
+test("eco del nombre", () => expect(harpoon.res.json().name).to.equal("Firulais"));
+"""

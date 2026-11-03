@@ -1,0 +1,4 @@
+name = "WebSocket echo"
+type = "websocket"
+method = "GET"
+url = "{{socket_url}}"
