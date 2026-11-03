@@ -96,12 +96,11 @@ fn apply_script_request(req: &mut Request, s: ScriptRequest) {
             },
             body,
         ) => {
-            if let Some(body) = body {
-                if graphql_script_body(query, variables, operation_name).as_deref()
+            if let Some(body) = body
+                && graphql_script_body(query, variables, operation_name).as_deref()
                     != Some(body.as_str())
-                {
-                    req.body = Body::Json { json: body };
-                }
+            {
+                req.body = Body::Json { json: body };
             }
         }
         (Body::Json { .. }, Some(b)) => req.body = Body::Json { json: b },

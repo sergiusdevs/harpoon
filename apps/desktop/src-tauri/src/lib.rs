@@ -5,6 +5,7 @@
 // Los comandos de Tauri reciben sus argumentos por valor.
 #![allow(clippy::needless_pass_by_value)]
 
+mod devtools;
 mod http_requests;
 mod mock;
 mod sse;
@@ -84,7 +85,10 @@ fn load(root: &Path) -> Result<Collection, String> {
 
 #[tauri::command]
 fn open_collection(path: PathBuf) -> Result<CollectionDto, String> {
-    load(&path).map(Into::into)
+    let col = load(&path)?;
+    // Repara los `.gitignore` anidados (secretos y estado local) al abrir.
+    let _ = col.ensure_gitignores();
+    Ok(col.into())
 }
 
 #[tauri::command]
@@ -114,6 +118,78 @@ fn rename_request(root: PathBuf, from: String, to: String) -> Result<CollectionD
     Ok(col.into())
 }
 
+/// Ruta en disco de una carpeta de solicitudes (`""` = la colección entera).
+fn folder_on_disk(root: &Path, folder: &str) -> Result<PathBuf, String> {
+    if !root.join("harpoon.toml").is_file() {
+        return Err(format!("{} no es una colección de Harpoon", root.display()));
+    }
+    if folder.is_empty() {
+        return Ok(root.to_path_buf());
+    }
+    let safe = folder
+        .split('/')
+        .all(|p| !p.is_empty() && p != "." && p != ".." && !p.contains('\\'));
+    if !safe {
+        return Err(format!("carpeta no válida: {folder}"));
+    }
+    let path = root
+        .join(harpoon_core::collection::REQUESTS_DIR)
+        .join(folder);
+    if !path.is_dir() {
+        return Err(format!("no existe la carpeta {}", path.display()));
+    }
+    // Un enlace simbólico dentro de requests/ no puede sacarnos de la colección.
+    let inside = match (path.canonicalize(), root.canonicalize()) {
+        (Ok(real), Ok(base)) => real.starts_with(base),
+        _ => false,
+    };
+    if !inside {
+        return Err(format!("carpeta fuera de la colección: {folder}"));
+    }
+    Ok(path)
+}
+
+/// Muestra la carpeta en el gestor de archivos (Finder, Explorer…).
+#[tauri::command]
+fn reveal_folder(root: PathBuf, folder: String) -> Result<(), String> {
+    let path = folder_on_disk(&root, &folder)?;
+    tauri_plugin_opener::reveal_item_in_dir(&path).map_err(|e| e.to_string())
+}
+
+/// Abre una terminal del sistema situada en la carpeta.
+#[tauri::command]
+fn open_terminal(root: PathBuf, folder: String) -> Result<(), String> {
+    use std::process::Command;
+    let path = folder_on_disk(&root, &folder)?;
+    let spawned = if cfg!(target_os = "macos") {
+        Command::new("open")
+            .args(["-a", "Terminal"])
+            .arg(&path)
+            .spawn()
+    } else if cfg!(target_os = "windows") {
+        // La ruta va como directorio de trabajo, nunca como texto que
+        // interprete `cmd` (una carpeta "a & calc" ejecutaría comandos).
+        Command::new("cmd")
+            .args(["/C", "start", "", "cmd"])
+            .current_dir(&path)
+            .spawn()
+    } else {
+        [
+            "x-terminal-emulator",
+            "gnome-terminal",
+            "konsole",
+            "xfce4-terminal",
+            "xterm",
+        ]
+        .iter()
+        .find_map(|t| Command::new(t).current_dir(&path).spawn().ok())
+        .ok_or_else(|| std::io::Error::other("no se encontró ninguna terminal"))
+    };
+    spawned
+        .map(|_| ())
+        .map_err(|e| format!("no se pudo abrir la terminal: {e}"))
+}
+
 #[tauri::command]
 fn create_folder(root: PathBuf, folder: String) -> Result<CollectionDto, String> {
     let col = load(&root)?;
@@ -140,10 +216,131 @@ fn save_folder_vars(
     root: PathBuf,
     folder: String,
     vars: IndexMap<String, String>,
+    secrets: Option<Vec<String>>,
 ) -> Result<CollectionDto, String> {
     let mut col = load(&root)?;
-    col.save_folder_vars(&folder, vars)
+    match secrets {
+        Some(secrets) => col.save_folder_config(&folder, vars, secrets),
+        None => col.save_folder_vars(&folder, vars),
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(col.into())
+}
+
+/// Exporta un entorno: todas sus variables, los secretos con valor vacío.
+#[tauri::command]
+fn export_environment(
+    root: PathBuf,
+    name: String,
+    path: PathBuf,
+    format: harpoon_core::env_io::EnvFormat,
+) -> Result<(), String> {
+    let col = load(&root)?;
+    let env = col
+        .environments
+        .get(&name)
+        .ok_or_else(|| format!("No existe el entorno {name}"))?;
+    std::fs::write(&path, harpoon_core::env_io::export(&name, env, format))
+        .map_err(|e| e.to_string())
+}
+
+/// Lee un entorno (Postman JSON o Harpoon TOML) sin guardarlo.
+#[tauri::command]
+fn preview_environment(path: PathBuf) -> Result<harpoon_core::env_io::ImportedEnv, String> {
+    harpoon_core::env_io::read(&path).map_err(|e| e.to_string())
+}
+
+/// Importa un entorno con el nombre indicado (no sobrescribe uno existente).
+#[tauri::command]
+fn import_environment(root: PathBuf, path: PathBuf, name: String) -> Result<CollectionDto, String> {
+    let imported = harpoon_core::env_io::read(&path).map_err(|e| e.to_string())?;
+    let name = harpoon_core::env_io::sanitize_name(&name);
+    let mut col = load(&root)?;
+    if col.environments.contains_key(&name) {
+        return Err(format!("Ya existe un entorno llamado {name}"));
+    }
+    col.save_environment(&name, imported.env)
         .map_err(|e| e.to_string())?;
+    Ok(col.into())
+}
+
+/// Posibles secretos en archivos versionados de la colección.
+#[tauri::command]
+fn scan_secrets(root: PathBuf) -> Result<Vec<harpoon_core::scan::Finding>, String> {
+    Ok(harpoon_core::scan::scan_collection(&load(&root)?))
+}
+
+/// Posibles secretos en una solicitud (antes de guardarla).
+#[tauri::command]
+fn scan_request(key: String, request: Request) -> Vec<harpoon_core::scan::Finding> {
+    harpoon_core::scan::scan_request(&key, &request)
+}
+
+/// Secretos declarados sin valor en esta máquina (tras clonar o importar).
+#[tauri::command]
+fn missing_secrets(
+    root: PathBuf,
+    env: Option<String>,
+) -> Result<Vec<harpoon_core::secrets::MissingSecret>, String> {
+    Ok(load(&root)?.missing_secrets(env.as_deref()))
+}
+
+/// Dónde se guarda un secreto.
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum SecretScope {
+    Collection,
+    Folder { path: String },
+    Environment { name: String },
+}
+
+/// Guarda (o crea) una variable secreta: el valor va al archivo local ignorado
+/// y en los archivos versionados solo queda su nombre.
+#[tauri::command]
+fn set_secret(
+    root: PathBuf,
+    scope: SecretScope,
+    name: String,
+    value: String,
+) -> Result<CollectionDto, String> {
+    let name = name.trim().to_owned();
+    if name.is_empty() || name.contains(['{', '}']) || name.chars().any(char::is_whitespace) {
+        return Err("Nombre de variable no válido".into());
+    }
+    let mut col = load(&root)?;
+    let err = |e: harpoon_core::Error| e.to_string();
+    match scope {
+        SecretScope::Collection => {
+            let mut meta = col.meta.clone();
+            meta.vars.insert(name.clone(), value);
+            if !meta.secrets.contains(&name) {
+                meta.secrets.push(name);
+            }
+            col.save_meta(meta).map_err(err)?;
+        }
+        SecretScope::Folder { path } => {
+            let config = col.folder_configs.get(&path).cloned().unwrap_or_default();
+            let mut vars = config.vars;
+            let mut secrets = config.secrets;
+            vars.insert(name.clone(), value);
+            if !secrets.contains(&name) {
+                secrets.push(name);
+            }
+            col.save_folder_config(&path, vars, secrets).map_err(err)?;
+        }
+        SecretScope::Environment { name: env_name } => {
+            let mut env = col
+                .environments
+                .get(&env_name)
+                .cloned()
+                .ok_or_else(|| format!("No existe el entorno {env_name}"))?;
+            env.vars.insert(name.clone(), value);
+            if !env.secrets.contains(&name) {
+                env.secrets.push(name);
+            }
+            col.save_environment(&env_name, env).map_err(err)?;
+        }
+    }
     Ok(col.into())
 }
 
@@ -244,13 +441,11 @@ fn prepare_curl(
         .headers
         .keys()
         .any(|key| key.eq_ignore_ascii_case("cookie"))
-    {
-        if let Some(value) = harpoon_http::cookies::PersistentCookies::for_root(&col.root)
+        && let Some(value) = harpoon_http::cookies::PersistentCookies::for_root(&col.root)
             .and_then(|jar| jar.header_for_url(&prepared.url))
             .map_err(|e| e.to_string())?
-        {
-            prepared.headers.insert("Cookie".into(), value);
-        }
+    {
+        prepared.headers.insert("Cookie".into(), value);
     }
     let digest = match &prepared.pending_auth {
         Some(harpoon_http::auth::Pending::Digest { username, password }) => Some(DigestCredentials { username: username.clone(), password: password.clone() }),
@@ -283,10 +478,45 @@ fn cancel_request(
     state.cancel(&id)
 }
 
+/// Registra en la consola/red un envío terminado.
+fn record_exchange(
+    devtools: &devtools::DevTools,
+    app: &tauri::AppHandle,
+    key: &str,
+    exec: &harpoon_script::runner::Execution,
+) {
+    let res = &exec.response;
+    devtools.record(
+        app,
+        devtools::Record {
+            key,
+            method: exec.prepared.method.to_string(),
+            url: &exec.prepared.url,
+            query: Some(&exec.prepared.query),
+            status: Some(res.status),
+            duration_ms: Some(u64::try_from(res.elapsed_ms).unwrap_or(u64::MAX)),
+            size: Some(res.size),
+            error: None,
+            logs: &exec.logs,
+            script_errors: exec
+                .tests
+                .iter()
+                .filter(|t| !t.passed && t.name.starts_with("script "))
+                .map(|t| match &t.detail {
+                    Some(d) => format!("{}: {d}", t.name),
+                    None => t.name.clone(),
+                })
+                .collect(),
+        },
+    );
+}
+
 #[tauri::command]
 async fn send_request(
+    app: tauri::AppHandle,
     args: SendArgs,
     state: tauri::State<'_, http_requests::Requests>,
+    devtools: tauri::State<'_, devtools::DevTools>,
 ) -> Result<ExchangeDto, http_requests::Failure> {
     let execute = async {
         let col = load(&args.root).map_err(http_requests::Failure::from_detail)?;
@@ -303,10 +533,35 @@ async fn send_request(
         .map_err(http_requests::Failure::from)?;
         Ok((col, exec))
     };
-    let (col, exec) = if let Some(id) = &args.id {
-        state.run(id, execute).await?
+    let result = if let Some(id) = &args.id {
+        state.run(id, execute).await
     } else {
-        execute.await?
+        execute.await
+    };
+    let (col, exec) = match result {
+        Ok(done) => done,
+        Err(failure) => {
+            devtools.record(
+                &app,
+                devtools::Record {
+                    key: &args.key,
+                    method: args.request.method.to_string(),
+                    url: &args.request.url,
+                    query: None,
+                    status: None,
+                    duration_ms: None,
+                    size: None,
+                    error: Some(if failure.detail.is_empty() {
+                        failure.title.to_string()
+                    } else {
+                        format!("{}: {}", failure.title, failure.detail)
+                    }),
+                    logs: &[],
+                    script_errors: Vec::new(),
+                },
+            );
+            return Err(failure);
+        }
     };
     let res = &exec.response;
     let binary = res.is_binary();
@@ -332,6 +587,7 @@ async fn send_request(
             checks_total,
         },
     );
+    record_exchange(&devtools, &app, &args.key, &exec);
     Ok(ExchangeDto {
         response: ResponseDto {
             status: res.status,
@@ -501,6 +757,7 @@ pub fn run() {
         .manage(http_requests::Requests::default())
         .manage(stream::Sessions::default())
         .manage(mock::MockState::default())
+        .manage(devtools::DevTools::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -520,6 +777,17 @@ pub fn run() {
             create_folder,
             rename_folder,
             delete_folder,
+            reveal_folder,
+            open_terminal,
+            export_environment,
+            preview_environment,
+            import_environment,
+            scan_secrets,
+            scan_request,
+            missing_secrets,
+            set_secret,
+            devtools::devtools_snapshot,
+            devtools::devtools_clear,
             save_folder_vars,
             resolve_url,
             save_environment,

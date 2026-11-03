@@ -4,7 +4,6 @@
   import ContextMenu, { type Item } from "../common/ContextMenu.svelte";
   import Icon from "../common/Icon.svelte";
   import { requestType } from "../../domain/types";
-  import MethodBadge from "../common/MethodBadge.svelte";
 
   let filter = $state("");
   let filterInput = $state<HTMLInputElement | null>(null);
@@ -19,7 +18,7 @@
   const tree = $derived.by(() => {
     const root: Node = { name: "", path: "", children: [] };
     if (!store.collection) return root;
-    const q = filter.trim().toLowerCase();
+    const q = fold(filter.trim());
     const ensure = (folder: string): Node => {
       let node = root;
       let acc = "";
@@ -36,7 +35,7 @@
     };
     if (!q) for (const f of store.folders) ensure(f);
     for (const [key, req] of Object.entries(store.collection.requests)) {
-      if (q && !key.toLowerCase().includes(q) && !req.name.toLowerCase().includes(q)) continue;
+      if (q && !fold(req.name).includes(q) && !fold(key).includes(q) && !fold(req.url).includes(q)) continue;
       const i = key.lastIndexOf("/");
       const parent = i >= 0 ? ensure(key.slice(0, i)) : root;
       parent.children.push({ name: i >= 0 ? key.slice(i + 1) : key, path: key, key, children: [] });
@@ -50,6 +49,26 @@
   });
 
   let collapsed = $state<Record<string, boolean>>({});
+  /** Con búsqueda activa se despliegan todas las carpetas que contienen coincidencias. */
+  const searching = $derived(!!filter.trim());
+  const isOpen = (path: string) => searching || !collapsed[path];
+  let searchOpen = $state(true);
+  function toggleSearch() {
+    if (searchOpen && !filter) { searchOpen = false; return; }
+    searchOpen = true;
+    queueMicrotask(() => { filterInput?.focus(); filterInput?.select(); });
+  }
+  function searchKey(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (filter) filter = ""; else filterInput?.blur();
+    } else if (e.key === "ArrowDown" && visible.length) {
+      e.preventDefault();
+      focused = visible[0].path;
+      (treeEl?.querySelector(`[data-path="${CSS.escape(visible[0].path)}"]`) as HTMLElement | null)?.focus();
+    }
+  }
 
   /** Lista plana de los nodos visibles, para la navegación con teclado. */
   const visible = $derived.by(() => {
@@ -57,7 +76,7 @@
     const walk = (list: Node[]) => {
       for (const n of list) {
         out.push(n);
-        if (!n.key && !collapsed[n.path]) walk(n.children);
+        if (!n.key && (searching || !collapsed[n.path])) walk(n.children);
       }
     };
     walk(tree.children);
@@ -77,6 +96,9 @@
       (treeEl?.querySelector(`[data-path="${CSS.escape(n.path)}"]`) as HTMLElement | null)?.focus();
     };
     switch (e.key) {
+      case "Escape":
+        if (filter) { e.preventDefault(); filter = ""; filterInput?.focus(); }
+        break;
       case "ArrowDown": e.preventDefault(); go(idx + 1); break;
       case "ArrowUp": e.preventDefault(); go(idx - 1); break;
       case "Home": e.preventDefault(); go(0); break;
@@ -95,6 +117,16 @@
       case "Backspace":
         if (cur && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (cur.key) store.deleteRequest(cur.key); else store.deleteFolder(cur.path); }
         break;
+      case "d":
+      case "r":
+      case "t":
+      case "n":
+        if (cur && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+          const items = cur.key ? requestMenu(cur.key) : folderMenu(cur.path);
+          const hit = items.find((it) => it.shortcut === e.key);
+          if (hit) { e.preventDefault(); hit.action(); }
+        }
+        break;
       case "F2":
         if (cur) { e.preventDefault(); if (cur.key) store.renameRequest(cur.key); else store.renameFolder(cur.path); }
         break;
@@ -102,7 +134,7 @@
   }
 
   // ---- menú contextual
-  let menu = $state<{ x: number; y: number; items: Item[] } | null>(null);
+  let menu = $state<{ x: number; y: number; items: Item[]; owner?: string } | null>(null);
   function openMenu(e: MouseEvent, items: Item[]) {
     e.preventDefault();
     e.stopPropagation();
@@ -116,26 +148,55 @@
       ...(store.collection ? [{ label: "Importar desde cURL…", action: () => store.importCurl() }] : []),
     ] };
   }
+  function openMenuAt(e: MouseEvent, items: Item[], owner: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (menu?.owner === owner) { menu = null; return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    menu = { x: rect.left, y: rect.bottom + 4, items, owner };
+  }
+  /** Pliega la carpeta y todas sus subcarpetas. */
+  function collapseAll(path: string) {
+    collapsed[path] = true;
+    for (const f of store.folders) if (f.startsWith(path + "/")) collapsed[f] = true;
+  }
   const requestMenu = (key: string): Item[] => [
-    { label: "Renombrar / mover…", action: () => store.renameRequest(key) },
-    { label: "Duplicar…", action: () => store.duplicate(key) },
-    { label: "Borrar…", action: () => store.deleteRequest(key), danger: true, sep: true },
+    { label: "Clonar", icon: "copy", shortcut: "d", action: () => store.duplicate(key) },
+    { label: "Renombrar / mover", icon: "pencil", shortcut: "r", action: () => store.renameRequest(key) },
+    { label: "Eliminar", icon: "x", action: () => store.deleteRequest(key), sep: true },
   ];
   const folderMenu = (path: string): Item[] => [
-    { label: "Ejecutar carpeta…", action: () => store.openRunner(path) },
-    { label: "Variables de la carpeta…", action: () => { store.editingFolder = path; store.modal = "folder"; } },
-    { label: "Nueva solicitud…", action: () => store.newRequest(path) },
-    { label: "Nueva subcarpeta…", action: () => store.newFolder(path) },
-    { label: "Renombrar / mover…", action: () => store.renameFolder(path), sep: true },
-    { label: "Borrar carpeta…", action: () => store.deleteFolder(path), danger: true },
+    { label: "Nueva solicitud", icon: "file-plus", shortcut: "n", action: () => store.newRequest(path) },
+    { label: "Nueva carpeta", icon: "folder-plus", action: () => store.newFolder(path) },
+    { label: "Ejecutar", icon: "play", action: () => store.openRunner(path) },
+    { label: "Clonar", icon: "copy", shortcut: "d", action: () => store.cloneFolder(path) },
+    { label: "Renombrar", icon: "pencil", shortcut: "r", action: () => store.renameFolder(path) },
+    { label: "Plegar", icon: "collapse", action: () => collapseAll(path) },
+    { label: "Mostrar en Finder", icon: "reveal", action: () => store.revealFolder(path) },
+    { label: "Ajustes", icon: "settings", sep: true, action: () => { store.editingFolder = path; store.modal = "folder"; } },
+    { label: "Abrir en Terminal", icon: "terminal", shortcut: "t", action: () => store.openTerminal(path) },
+    { label: "Eliminar", icon: "x", action: () => store.deleteFolder(path) },
+  ];
+  const addMenu = (): Item[] => [
+    { label: "Nueva solicitud", icon: "file-plus", shortcut: "n", action: () => store.newRequest("") },
+    { label: "Nueva carpeta", icon: "folder-plus", action: () => store.newFolder("") },
+    { label: "Importar desde cURL", icon: "terminal", sep: true, action: () => store.importCurl() },
+  ];
+  const headerMenu = (): Item[] => [
+    { label: "Buscar en el contenido…", icon: "file", action: () => { store.modal = "search"; } },
+    ...rootMenu().filter((item) => item.label !== "Nueva solicitud" && item.label !== "Nueva carpeta" && item.label !== "Importar desde cURL"),
   ];
   const rootMenu = (): Item[] => [
-    { label: "Ejecutar colección…", action: () => store.openRunner() },
-    { label: "Servidor mock local…", action: () => { store.modal = "mock"; } },
-    { label: "Importar / exportar colección…", action: () => { store.modal = "share"; } },
-    { label: "Importar desde cURL…", action: () => store.importCurl() },
-    { label: "Nueva solicitud…", action: () => store.newRequest("") },
-    { label: "Nueva carpeta…", action: () => store.newFolder("") },
+    { label: "Nueva solicitud", icon: "file-plus", shortcut: "n", action: () => store.newRequest("") },
+    { label: "Nueva carpeta", icon: "folder-plus", action: () => store.newFolder("") },
+    { label: "Ejecutar", icon: "play", action: () => store.openRunner() },
+    { label: "Importar desde cURL", icon: "terminal", action: () => store.importCurl() },
+    { label: "Importar / exportar", icon: "share", action: () => { store.modal = "share"; } },
+    { label: "Plegar todo", icon: "collapse", action: () => { for (const f of store.folders) collapsed[f] = true; } },
+    { label: "Mostrar en Finder", icon: "reveal", action: () => store.revealFolder("") },
+    { label: "Servidor mock", icon: "server", badge: "Beta", action: () => { store.modal = "mock"; } },
+    { label: "Ajustes", icon: "settings", sep: true, action: () => (store.modal = "settings") },
+    { label: "Abrir en Terminal", icon: "terminal", shortcut: "t", action: () => store.openTerminal("") },
   ];
 
   // ---- arrastrar y soltar
@@ -181,7 +242,7 @@
     if (e.key === ",") { e.preventDefault(); store.modal = "themes"; return; }
     if (!store.collection) return;
     if (e.shiftKey && e.key.toLowerCase() === "f" && !store.modal && !store.dialog) { e.preventDefault(); store.modal = "search"; }
-    else if (e.key === "k") { e.preventDefault(); filterInput?.focus(); filterInput?.select(); }
+    else if (e.key === "k") { e.preventDefault(); searchOpen = true; queueMicrotask(() => { filterInput?.focus(); filterInput?.select(); }); }
     else if (e.key === "n" && !e.shiftKey) { e.preventDefault(); store.newRequest(""); }
     else if (e.key === "n" && e.shiftKey) { e.preventDefault(); store.newFolder(""); }
     else if (e.key === "e") { e.preventDefault(); store.modal = "environments"; }
@@ -189,6 +250,14 @@
 </script>
 
 <svelte:window onkeydown={onGlobalKey} />
+
+{#snippet hl(text: string)}
+  {#each highlight(text, filter.trim()) as part}{#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}{/each}
+{/snippet}
+
+{#snippet guides(depth: number)}
+  {#each Array(depth) as _, i}<span class="guide" style="left: {GUIDE0 + i * INDENT}px" aria-hidden="true"></span>{/each}
+{/snippet}
 
 {#snippet nodes(list: Node[], depth: number)}
   {#each list as n (n.path + (n.key ? ":r" : ":f"))}
@@ -198,7 +267,7 @@
         class="item"
         class:active={store.selected === n.key}
         class:dragging={dragging?.path === n.key}
-        style="padding-left: {12 + depth * 14}px"
+        style="--depth: {depth}"
         role="treeitem"
         tabindex={focused === n.path || (!focused && store.selected === n.key) ? 0 : -1}
         aria-selected={store.selected === n.key}
@@ -213,19 +282,21 @@
         ondragend={dragEnd}
         title={req.name}
       >
-        <span class="badge-slot">{#if requestType(req) === "http"}<MethodBadge method={req.method} />{:else}<span class="protocol">{requestType(req) === "websocket" ? "WS" : requestType(req) === "graphql" ? "GQL" : "SSE"}</span>{/if}</span>
-        <span class="name">{req.name || n.name}</span>
+        {@render guides(depth)}
+        {#if requestType(req) === "http"}<span class="verb {req.method}" title={req.method}>{SHORT[req.method] ?? req.method}</span>{:else}<span class="verb protocol">{requestType(req) === "websocket" ? "WS" : requestType(req) === "graphql" ? "GQL" : "SSE"}</span>{/if}
+        <span class="name">{@render hl(req.name || n.name)}</span>
         {#if store.selected === n.key && store.dirty}<span class="dot" title="Sin guardar" aria-label="sin guardar"></span>{/if}
+        <button class="more" class:open={menu?.owner === "req:" + n.key} tabindex="-1" title="Más acciones" aria-label="Más acciones de {req.name || n.name}" onclick={(e) => openMenuAt(e, requestMenu(n.key!), "req:" + n.key)}><Icon name="dots" size={16} /></button>
       </div>
     {:else}
       <div
         class="folder"
         class:drop-target={dropOver === n.path}
         class:dragging={dragging?.path === n.path && dragging.kind === "folder"}
-        style="padding-left: {12 + depth * 14}px"
+        style="--depth: {depth}"
         role="treeitem"
         tabindex={focused === n.path ? 0 : -1}
-        aria-expanded={!collapsed[n.path]}
+        aria-expanded={isOpen(n.path)}
         aria-selected={false}
         aria-level={depth + 1}
         data-path={n.path}
@@ -240,16 +311,16 @@
         ondragleave={() => dropOver === n.path && (dropOver = null)}
         ondrop={(e) => drop(e, n.path)}
       >
-        <span class="chev" class:closed={collapsed[n.path]} aria-hidden="true">▾</span>
-        <span class="ficon"><Icon name={collapsed[n.path] ? "folder" : "folder-open"} size={17} /></span>
-        <span class="fname">{n.name}</span>
-        <span class="n muted">{countRequests(n)}</span>
+        {@render guides(depth)}
+        <span class="ficon" class:open={isOpen(n.path)}><Icon name={isOpen(n.path) ? "folder-open" : "folder"} size={16} /></span>
+        <span class="fname">{@render hl(n.name)}</span>
+        <button class="more" class:open={menu?.owner === n.path} tabindex="-1" title="Más acciones" aria-label="Más acciones de {n.name}" onclick={(e) => openMenuAt(e, folderMenu(n.path), n.path)}><Icon name="dots" size={16} /></button>
       </div>
-      {#if !collapsed[n.path]}
-        {#if n.children.length === 0}
-          <div class="empty-folder muted" style="padding-left: {26 + (depth + 1) * 14}px">vacía · arrastra aquí o clic derecho</div>
+      {#if isOpen(n.path)}
+        {#if n.children.length === 0 && !searching}
+          <div class="empty-folder" style="--depth: {depth + 1}">{@render guides(depth + 1)}<span class="empty-label">Vacía</span></div>
         {/if}
-        <div class="tree-group" role="group">{@render nodes(n.children, depth + 1)}</div>
+        <div role="group">{@render nodes(n.children, depth + 1)}</div>
       {/if}
     {/if}
   {/each}
@@ -274,27 +345,20 @@
       <p class="muted small">Se crearán <code>harpoon.toml</code>, <code>environments/dev.toml</code> y <code>requests/health.toml</code>.</p>
     </div>
   {:else if store.collection}
-    <div class="section-label">Colección<span>{Object.keys(store.collection.requests).length} solicitudes</span></div>
-    <div class="collection">
-      <div class="col-row">
-        <span class="collection-icon"><Icon name="folder-open" size={17} /></span>
-        <div class="col-name" title={store.collection.root}>{store.collection.meta.name}</div>
-        <button class="btn icon" title="Ejecutar colección" aria-label="Ejecutar colección" onclick={() => store.openRunner()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg></button>
-        <button class="btn icon" title="Ajustes de la colección" aria-label="Ajustes de la colección" onclick={() => (store.modal = "settings")}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
-        </button>
+    <div class="col-row">
+      <span class="collection-icon"><Icon name="folder-open" size={16} /></span>
+      <div class="col-name" title={`${store.collection.root} · ${Object.keys(store.collection.requests).length} solicitudes`}>{store.collection.meta.name}</div>
+      <button class="btn icon head-btn" class:on={searchOpen} title="Buscar solicitudes (⌘K)" aria-label="Buscar solicitudes" aria-pressed={searchOpen} onclick={toggleSearch}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></button>
+      <button class="btn icon head-btn" class:open={menu?.owner === ":add"} title="Nuevo (⌘N · ⇧⌘N)" aria-label="Nueva solicitud o carpeta" aria-haspopup="menu" onclick={(e) => openMenuAt(e, addMenu(), ":add")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
+      <button class="btn icon head-btn" class:open={menu?.owner === ":root"} title="Más acciones" aria-label="Más acciones de la colección" aria-haspopup="menu" onclick={(e) => openMenuAt(e, headerMenu(), ":root")}><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+    </div>
+    {#if searchOpen}
+      <div class="search">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+        <input bind:this={filterInput} placeholder="Buscar solicitudes…" bind:value={filter} spellcheck="false" autocomplete="off" aria-label="Buscar solicitudes por nombre, ruta o URL" onkeydown={searchKey} />
+        {#if filter}<button class="clear" title="Limpiar (Esc)" aria-label="Limpiar búsqueda" onclick={() => { filter = ""; filterInput?.focus(); }}><Icon name="x" size={12} /></button>{:else}<kbd>⌘K</kbd>{/if}
       </div>
-    </div>
-    <div class="toolbar">
-      <input bind:this={filterInput} placeholder="Filtrar  ⌘K" bind:value={filter} spellcheck="false" aria-label="Filtrar solicitudes" />
-      <button class="btn icon" title="Buscar en la colección (⇧⌘F)" aria-label="Buscar en la colección" onclick={() => (store.modal = "search")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></button>
-      <button class="btn icon" title="Nueva solicitud (⌘N)" aria-label="Nueva solicitud" onclick={() => store.newRequest("")}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-      </button>
-      <button class="btn icon" title="Nueva carpeta (⇧⌘N)" aria-label="Nueva carpeta" onclick={() => store.newFolder("")}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M12 11v5M9.5 13.5h5" /></svg>
-      </button>
-    </div>
+    {/if}
     <div
       class="tree"
       class:drop-target={dropOver === ""}
@@ -348,11 +412,41 @@
 {/if}
 
 <script module lang="ts">
-  function countRequests(n: { key?: string; children: { key?: string; children: unknown[] }[] }): number {
-    let c = 0;
-    for (const ch of n.children) c += ch.key ? 1 : countRequests(ch as never);
-    return c;
+  /** Sangría por nivel y posición de la primera guía vertical (centro del icono de carpeta). */
+  const INDENT = 16;
+  const GUIDE0 = 16;
+  /** Minúsculas y sin acentos, para comparar. */
+  function fold(text: string): string {
+    return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   }
+  /** Parte el texto en tramos marcando la coincidencia (sin distinguir mayúsculas ni acentos). */
+  function highlight(text: string, query: string): { text: string; hit: boolean }[] {
+    const q = fold(query);
+    if (!q) return [{ text, hit: false }];
+    // Correspondencia entre índices del texto plegado y del original.
+    let folded = "";
+    const origin: number[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const piece = fold(text[i]);
+      for (let j = 0; j < piece.length; j++) origin.push(i);
+      folded += piece;
+    }
+    origin.push(text.length);
+    const parts: { text: string; hit: boolean }[] = [];
+    let from = 0;
+    let at = folded.indexOf(q);
+    while (at >= 0 && q.length) {
+      const start = origin[at];
+      const end = origin[at + q.length - 1] + 1;
+      if (start > from) parts.push({ text: text.slice(from, start), hit: false });
+      parts.push({ text: text.slice(start, end), hit: true });
+      from = end;
+      at = folded.indexOf(q, at + q.length);
+    }
+    if (from < text.length) parts.push({ text: text.slice(from), hit: false });
+    return parts;
+  }
+  const SHORT: Record<string, string> = { GET: "GET", POST: "POST", PUT: "PUT", PATCH: "PATCH", DELETE: "DEL", HEAD: "HEAD", OPTIONS: "OPT" };
 </script>
 
 <style>
@@ -416,16 +510,12 @@
     font: 11px var(--font);
     color: var(--text-faint);
   }
-  .section-label { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 8px; text-transform: uppercase; letter-spacing: .08em; font-size: 10px; font-weight: 600; color: var(--text-faint); }
-  .section-label span { text-transform: none; letter-spacing: 0; font-weight: 400; }
   .collection-icon { display: inline-flex; color: var(--accent); margin-right: 8px; }
-  .collection {
-    padding: 4px 10px 4px 14px;
-  }
   .col-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 2px;
+    padding: 12px 8px 8px 14px;
   }
   .col-name {
     flex: 1;
@@ -436,19 +526,28 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .toolbar {
+  .head-btn { width: 26px; height: 26px; padding: 0; color: var(--text-muted); }
+  .head-btn:hover, .head-btn.open { color: var(--text); }
+  .head-btn.on { color: var(--accent); }
+  .search {
+    position: relative;
     display: flex;
-    gap: 2px;
     align-items: center;
-    padding: 8px 10px 12px;
-    border-bottom: 1px solid var(--border);
+    margin: 0 10px 8px;
   }
-  .toolbar input {
+  .search input {
     flex: 1;
     min-width: 0;
     font-size: 12px;
-    padding: 7px 8px;
+    padding: 6px 30px 6px 29px;
+    border-radius: 7px;
+    background: var(--bg);
   }
+  .search-icon { position: absolute; left: 10px; color: var(--text-faint); pointer-events: none; }
+  .search kbd { position: absolute; right: 8px; font: 10.5px var(--font); color: var(--text-faint); pointer-events: none; }
+  .search .clear { position: absolute; right: 5px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 4px; color: var(--text-muted); }
+  .search .clear:hover { color: var(--text); background: var(--bg-hover); }
+  mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; margin: 0 -1px; }
   .tree {
     flex: 1;
     min-height: 0;
@@ -457,86 +556,108 @@
     outline: none;
   }
   .folder,
-  .item {
+  .item,
+  .empty-folder {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
+    min-height: 28px;
     text-align: left;
-    padding: 7px 8px;
+    padding: 0 6px 0 calc(8px + var(--depth, 0) * 16px);
     border-radius: 4px;
     color: var(--text);
+    font-size: 12.5px;
     transition: background var(--t);
     cursor: default;
     user-select: none;
   }
-  .folder {
-    color: var(--text);
-    font-size: 12.5px;
-    font-weight: 600;
-    margin-top: 2px;
-    gap: 6px;
-  }
   .fname {
     flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .n {
-    font-size: 10.5px;
-    font-weight: 400;
-    opacity: 0.7;
+  /* Guía vertical de 1px por nivel de profundidad. */
+  .guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+    pointer-events: none;
   }
-  .tree-group { background-image: linear-gradient(var(--border), var(--border)); background-size: 1px 100%; background-repeat: no-repeat; background-position: 18px 0; }
+  /* Botón ··· : aparece al pasar por encima (o con el menú abierto). */
+  .more {
+    display: none;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 20px;
+    margin-left: auto;
+    border-radius: 4px;
+    color: var(--text-muted);
+  }
+  .more:hover { color: var(--text); background: var(--bg-active, var(--border)); }
+  .folder:hover .more,
+  .folder:focus-visible .more,
+  .item:hover .more,
+  .item:focus-visible .more,
+  .more.open { display: inline-flex; }
+  .item:hover .dot,
+  .item:has(.more.open) .dot { display: none; }
+  .folder:has(.more.open),
+  .item:has(.more.open) { background: var(--bg-hover); }
   .folder:hover,
   .item:hover {
     background: var(--bg-hover);
   }
   .item.active {
-    background: var(--accent-soft);
-    box-shadow: inset 2px 0 0 var(--accent);
+    background: var(--bg-active);
   }
-  .chev {
-    display: inline-block;
-    width: 10px;
-    transition: transform var(--t);
-    font-size: 10px;
-  }
-  .chev.closed {
-    transform: rotate(-90deg);
-  }
-  .protocol {
-    font: 600 10px var(--mono);
-    color: var(--accent);
-  }
-  .badge-slot {
-    width: 50px;
+  .verb {
     flex: 0 0 auto;
-    display: inline-flex;
+    min-width: 31px;
+    font: 600 10.5px var(--mono);
+    letter-spacing: 0.01em;
   }
+  .verb.GET { color: var(--m-get); }
+  .verb.POST { color: var(--m-post); }
+  .verb.PUT { color: var(--m-put); }
+  .verb.PATCH { color: var(--m-patch); }
+  .verb.DELETE { color: var(--m-delete); }
+  .verb.HEAD,
+  .verb.OPTIONS { color: var(--m-head); }
+  .verb.protocol { color: var(--accent); }
   .ficon {
     display: inline-flex;
+    flex: 0 0 auto;
     color: var(--text-muted);
-    opacity: 0.85;
   }
   .name {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .dot {
-    margin-left: auto;
+    flex: 0 0 auto;
     width: 6px;
     height: 6px;
+    margin-right: 6px;
     border-radius: 50%;
     background: var(--warn);
   }
   .empty-folder {
+    min-height: 24px;
     font-size: 11px;
-    font-style: italic;
-    padding: 3px 0;
+    color: var(--text-faint);
   }
+  .empty-label { padding-left: 22px; }
   .root-drop {
     margin: 10px 6px 0;
     padding: 10px;

@@ -99,6 +99,7 @@ pub fn export(collection: &Collection) -> Result<SharedCollection> {
     {
         warnings.push("Los certificados y claves de conexión no se incluyen".into());
     }
+    warnings.extend(crate::scan::export_warnings(collection));
     let shared = SharedCollection {
         format: FORMAT.into(),
         name: collection.meta.name.clone(),
@@ -122,9 +123,65 @@ pub fn read(path: &Path) -> Result<SharedCollection> {
         ));
     }
     let data = fs::read(path).map_err(|e| io(path, e))?;
-    let shared: SharedCollection = serde_json::from_slice(&data)?;
+    let mut shared: SharedCollection = serde_json::from_slice(&data)?;
     validate(&shared)?;
+    // Los avisos los calcula Harpoon: los que trae el archivo los escribió
+    // quien lo exportó y no son de fiar.
+    shared.warnings = import_warnings(&shared);
     Ok(shared)
+}
+
+/// Riesgos de abrir una colección ajena: scripts que se ejecutan al enviar
+/// (con acceso a las variables del entorno) y TLS sin verificar.
+fn import_warnings(shared: &SharedCollection) -> Vec<String> {
+    let parse = |text: &str| text.parse::<toml::Table>().ok();
+    let has_scripts = |table: &toml::Table| {
+        table
+            .get("scripts")
+            .and_then(toml::Value::as_table)
+            .is_some_and(|scripts| {
+                scripts
+                    .values()
+                    .any(|v| v.as_str().is_some_and(|s| !s.trim().is_empty()))
+            })
+    };
+    let mut warnings = Vec::new();
+    let scripted: Vec<&str> = shared
+        .files
+        .iter()
+        .filter(|(key, _)| *key == "harpoon.toml" || key.starts_with("requests/"))
+        .filter(|(_, text)| parse(text).is_some_and(|t| has_scripts(&t)))
+        .map(|(key, _)| key.as_str())
+        .collect();
+    if !scripted.is_empty() {
+        let list = scripted
+            .iter()
+            .take(5)
+            .copied()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let more = if scripted.len() > 5 {
+            format!(" y {} más", scripted.len() - 5)
+        } else {
+            String::new()
+        };
+        warnings.push(format!(
+            "Incluye scripts que se ejecutarán al enviar y pueden leer tus variables y secretos ({list}{more}). Revísalos si la colección no es de confianza."
+        ));
+    }
+    let insecure = shared
+        .files
+        .get("harpoon.toml")
+        .and_then(|text| parse(text))
+        .and_then(|t| t.get("settings")?.get("insecure")?.as_bool())
+        .unwrap_or(false);
+    if insecure {
+        warnings.push("Desactiva la verificación de certificados TLS (insecure = true). Cámbialo en Ajustes si no lo necesitas.".into());
+    }
+    if shared.files.contains_key("mocks.toml") {
+        warnings.push("Incluye respuestas mock.".into());
+    }
+    warnings
 }
 
 fn validate(shared: &SharedCollection) -> Result<()> {

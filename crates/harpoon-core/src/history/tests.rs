@@ -50,3 +50,27 @@ fn append_recorta_y_carga() {
     clear(tmp.path(), "big").unwrap();
     assert!(load(tmp.path(), "big").is_empty());
 }
+
+#[test]
+fn el_historial_no_guarda_credenciales() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut e = entry(200);
+    e.url = "https://api.x.com/a?page=2&access_token=abc123&api_key=zzz#top".into();
+    e.headers = IndexMap::from([
+        ("Set-Cookie".to_string(), "session=s3cr3t".to_string()),
+        ("Content-Type".to_string(), "application/json".to_string()),
+        ("X-Auth-Token".to_string(), "t0k3n".to_string()),
+    ]);
+    append(tmp.path(), "a", e).unwrap();
+    let saved = &load(tmp.path(), "a")[0];
+    assert_eq!(
+        saved.url,
+        format!("https://api.x.com/a?page=2&access_token={HIDDEN}&api_key={HIDDEN}#top")
+    );
+    assert_eq!(saved.headers["Set-Cookie"], HIDDEN);
+    assert_eq!(saved.headers["X-Auth-Token"], HIDDEN);
+    assert_eq!(saved.headers["Content-Type"], "application/json");
+    let raw =
+        std::fs::read_to_string(tmp.path().join(".harpoon/history/a.jsonl")).unwrap_or_default();
+    assert!(!raw.contains("s3cr3t") && !raw.contains("abc123"));
+}

@@ -13,7 +13,10 @@
   const touch = () => (dirty = true);
 
   async function save() {
-    await store.saveMeta(structuredClone($state.snapshot(meta)));
+    const next = structuredClone($state.snapshot(meta));
+    next.secrets = (next.secrets ?? []).filter((name) => name in next.vars);
+    await store.saveMeta(next);
+    void store.refreshMissingSecrets();
     dirty = false;
     store.modal = null;
   }
@@ -44,7 +47,8 @@
       <AuthForm auth={meta.auth} allowInherit={false} onchange={(a) => { meta.auth = a; touch(); }} />
     {:else if tab === "vars"}
       <p class="muted hint">Variables comunes a todos los entornos (los entornos las pueden sobrescribir).</p>
-      <KeyValue entries={meta.vars} onchange={(v) => { meta.vars = v; touch(); }} keyPlaceholder="variable" />
+      <KeyValue entries={meta.vars} onchange={(v) => { meta.vars = v; touch(); }} keyPlaceholder="variable" secretKeys={meta.secrets ?? []} onSecretsChange={(keys) => { if (keys.join() !== (meta.secrets ?? []).join()) { meta.secrets = keys; touch(); } }} />
+      <p class="muted hint secret-hint">Las variables secretas no se guardan en Git: solo su nombre. El valor queda en este equipo (o en la variable de sistema <code>HARPOON_NOMBRE</code>).</p>
     {:else if tab === "scripts"}
       <p class="muted hint">Se ejecutan en todas las solicitudes, antes de los scripts propios de cada una.</p>
       {#each [["pre", "Pre-request"], ["post", "Post-response"], ["test", "Tests"]] as [k, label]}
@@ -121,6 +125,8 @@
     font-size: 12px;
     margin: 0 0 8px;
   }
+  .secret-hint { margin-top: 10px; }
+  code { font: 11px var(--mono); background: var(--bg-active); padding: 1px 5px; border-radius: 4px; }
   .sub {
     color: var(--text-muted);
     font-size: 11px;

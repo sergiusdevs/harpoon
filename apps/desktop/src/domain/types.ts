@@ -132,6 +132,8 @@ export interface CollectionMeta {
   format: number;
   default_environment: string | null;
   vars: Record<string, string>;
+  /** Variables de colección secretas: el valor vive en `.harpoon/secrets.toml` (fuera de Git). */
+  secrets: string[];
   auth: Auth;
   settings: Settings;
   scripts: Scripts;
@@ -158,8 +160,37 @@ export interface Collection {
   meta: CollectionMeta;
   environments: Record<string, Environment>;
   requests: Record<string, Request>;
-  folder_configs: Record<string, { vars: Record<string, string> }>;
+  folder_configs: Record<string, FolderConfig>;
 }
+
+export interface FolderConfig {
+  vars: Record<string, string>;
+  /** Variables de carpeta secretas (valor en `.harpoon/secrets.toml`). */
+  secrets: string[];
+}
+
+/** Posible secreto en un archivo versionado (lo detecta `harpoon_core::scan`). */
+export interface SecretFinding {
+  file: string;
+  location: string;
+  kind: string;
+  /** Valor recortado, nunca entero. */
+  preview: string;
+  /** Nombre de variable sugerido. */
+  suggestion: string;
+}
+
+/** Secreto declarado sin valor en esta máquina. */
+export interface MissingSecret {
+  scope: "collection" | "folder" | "environment";
+  /** Carpeta o entorno; vacío para la colección. */
+  owner: string;
+  name: string;
+  /** Variable del sistema que también lo resuelve (`HARPOON_TOKEN`). */
+  env_var: string;
+}
+
+export type SecretScope = { kind: "collection" } | { kind: "folder"; path: string } | { kind: "environment"; name: string };
 
 export interface Outcome {
   name: string;
@@ -241,11 +272,14 @@ export function normalizeCollection(c: Collection): Collection {
   const meta: CollectionMeta = {
     ...c.meta,
     vars: c.meta.vars ?? {},
+    secrets: c.meta.secrets ?? [],
     auth: normalizeAuth(c.meta.auth ?? { type: "none" }),
     settings: Object.assign({ timeout_ms: 30000, follow_redirects: true, insecure: false }, c.meta.settings ?? {}),
     scripts: Object.assign({ pre: "", post: "", test: "" }, c.meta.scripts ?? {}),
   };
-  return { ...c, meta, environments, requests, folder_configs: c.folder_configs ?? {} };
+  const folder_configs: Record<string, FolderConfig> = {};
+  for (const [k, f] of Object.entries(c.folder_configs ?? {})) folder_configs[k] = { ...f, vars: f?.vars ?? {}, secrets: f?.secrets ?? [] };
+  return { ...c, meta, environments, requests, folder_configs };
 }
 
 export interface StoredCookie {

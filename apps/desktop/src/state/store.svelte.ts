@@ -8,12 +8,14 @@ import { streams } from "./streams.svelte";
 import { api, folderChain } from "../services/api";
 import { themes, type Theme } from "../domain/themes";
 import { interfaceFonts, editorFonts, type InterfaceFont, type EditorFont } from "../domain/fonts";
-import { convertRequestType, newTypedRequest, requestType, type RequestType, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type Request } from "../domain/types";
+import { convertRequestType, newTypedRequest, requestType, type RequestType, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type MissingSecret, type Request, type SecretFinding, type SecretScope } from "../domain/types";
+import { applySecret } from "../domain/secrets";
+import { splitUrl } from "../domain/urlQuery";
 
 export type Status = { kind: "idle" | "ok" | "err" | "busy"; text: string };
 
 export type Dialog =
-  | { kind: "request"; title: string; label: string; value: string; placeholder: string; method: Method; ok: string; onOk: (value: string, method: Method, type: RequestType, url: string, curl?: string) => Promise<void> | void }
+  | { kind: "request"; title: string; label: string; value: string; placeholder: string; method: Method; ok: string; folder: string; onOk: (value: string, method: Method, type: RequestType, url: string, file: string) => Promise<void> | void }
   | { kind: "prompt"; title: string; label?: string; value: string; placeholder?: string; ok: string; onOk: (value: string) => Promise<void> | void }
   | { kind: "confirm"; title: string; text: string; ok: string; danger?: boolean; onOk: () => Promise<void> | void };
 
@@ -22,6 +24,10 @@ class Store {
   /** Carpetas bajo requests/, incluidas las vacías. */
   folders = $state<string[]>([]);
   selected = $state<string | null>(null);
+  /** Solicitud y respuesta una encima de otra aunque haya ancho (botón de la barra de título). */
+  forceStacked = $state(false);
+  /** Barra lateral oculta (botón de la barra de título). */
+  sidebarHidden = $state(false);
   tabs = $state(emptyTabs());
   env = $state<string | null>(null);
   /** Copia editable de la solicitud seleccionada. */
@@ -45,7 +51,13 @@ class Store {
   runtimeVariables = $state<Record<string, string>>({});
   /** Entrada del historial que se está viendo (null = respuesta en vivo). */
   viewingHistory = $state<HistoryEntry | null>(null);
-  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | "search" | "stream" | "mock" | null>(null);
+  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | "search" | "stream" | "mock" | "secret-findings" | "missing-secrets" | null>(null);
+  /** Posibles secretos detectados al guardar la solicitud abierta (modal "secret-findings"). */
+  secretFindings = $state<{ key: string; findings: SecretFinding[] } | null>(null);
+  /** Secretos declarados sin valor en esta máquina para el entorno activo. */
+  missingSecrets = $state<MissingSecret[]>([]);
+  /** Colección+entorno para los que el usuario ya cerró el aviso de secretos. */
+  dismissedMissing = $state<string | null>(null);
   editingFolder = $state("");
   runFolder = $state("");
 
@@ -148,6 +160,11 @@ class Store {
       this.tabs = emptyTabs(); this.selected = null; this.draft = null; this.dirty = false;
     }
     pruneTabs(this.tabs, col.requests);
+    // Los parámetros escritos dentro de la URL pasan a Params (se envía lo mismo).
+    for (const request of Object.values(col.requests)) {
+      const split = splitUrl(request.url);
+      if (split.pairs.length) { request.url = split.base; request.query = { ...Object.fromEntries(split.pairs), ...request.query }; }
+    }
     this.collection = col;
     this.runtimeVariables = {};
     try { this.runtimeVariables = await (await api).runtimeVars(col.root); } catch { /* la colección sigue disponible */ }
@@ -230,10 +247,26 @@ class Store {
     if (this.selected && this.tabs.views[this.selected]) this.tabs.views[this.selected].dirty = true;
   }
 
-  async save() {
+  /**
+   * Guarda la solicitud abierta. Antes revisa si lleva algo que parezca un
+   * secreto escrito tal cual (tokens, passwords…): si es así abre el modal
+   * "secret-findings" y no guarda hasta que el usuario elija.
+   */
+  async save(opts: { force?: boolean } = {}) {
     if (!this.collection || !this.selected || !this.draft) return;
     const root = this.collection.root, key = this.selected;
     const request = structuredClone($state.snapshot(this.draft));
+    if (!opts.force) {
+      try {
+        const findings = await (await api).scanRequest(key, request);
+        if (findings.length) {
+          this.secretFindings = { key, findings };
+          this.modal = "secret-findings";
+          return;
+        }
+      } catch { /* si el detector falla, se guarda igual */ }
+    }
+    this.secretFindings = null;
     await this.run(async () => {
       await (await api).saveRequest(root, key, request);
       if (this.collection?.root !== root) return;
@@ -352,25 +385,80 @@ class Store {
   newRequest(folder = "") {
     this.dialog = {
       kind: "request",
-      title: folder ? `Nueva solicitud en ${folder}/` : "Nueva solicitud",
+      title: "Nueva solicitud",
       label: "Nombre de la solicitud",
       value: "",
       placeholder: "listar-usuarios",
       method: "GET",
       ok: "Crear",
-      onOk: async (name, method, type, url, curl) => {
-        const key = (folder ? folder + "/" : "") + slug(name);
-        if (!slug(name)) throw "El nombre no puede estar vacío";
+      folder,
+      onOk: async (name, method, type, url, file) => {
+        if (!name.trim()) throw "El nombre no puede estar vacío";
+        const base = slug(file) || slug(name);
+        if (!base) throw "El nombre de archivo no puede estar vacío";
+        const key = (folder ? folder + "/" : "") + base;
         if (this.collection!.requests[key]) throw `Ya existe ${key}`;
-        const req = curl ? parseCurl(curl) : newTypedRequest(name.trim(), type, method);
+        // Si se pega un cURL en la URL, se importa entero (como en la barra de la solicitud).
+        const fromCurl = /^\s*curl(?:\s|$)/.test(url);
+        const req = fromCurl ? parseCurl(url) : newTypedRequest(name.trim(), type, method);
         req.name = name.trim(); req.type = requestType(req);
-        if (!curl && url.trim()) req.url = url.trim();
+        if (!fromCurl && url.trim()) req.url = url.trim();
         await (await api).saveRequest(this.collection!.root, key, req);
         const col = await (await api).openCollection(this.collection!.root);
         await this.adopt(col, { select: key });
         this.status = { kind: "ok", text: `Creada requests/${key}.toml` };
       },
     };
+  }
+
+  toggleStacked() {
+    this.forceStacked = !this.forceStacked;
+    try { localStorage.setItem("harpoon.forceStacked", this.forceStacked ? "1" : "0"); } catch { /* sin almacenamiento */ }
+  }
+
+  toggleSidebar() {
+    this.sidebarHidden = !this.sidebarHidden;
+    try { localStorage.setItem("harpoon.sidebarHidden", this.sidebarHidden ? "1" : "0"); } catch { /* sin almacenamiento */ }
+  }
+
+  /** Copia una carpeta con sus subcarpetas, solicitudes y variables. */
+  cloneFolder(folder: string) {
+    this.dialog = {
+      kind: "prompt",
+      title: "Clonar carpeta",
+      label: "Ruta de la copia",
+      value: folder + "-copia",
+      ok: "Clonar",
+      onOk: async (to) => {
+        const target = normalizeKey(to);
+        if (!target) throw "La ruta no puede estar vacía";
+        if (target === folder || target.startsWith(folder + "/")) throw "La copia no puede estar dentro de la carpeta original";
+        const col = this.collection!;
+        if (this.folders.includes(target) || Object.keys(col.requests).some((k) => k.startsWith(target + "/"))) throw `Ya existe ${target}/`;
+        const a = await api;
+        const remap = (path: string) => target + path.slice(folder.length);
+        const inside = (path: string) => path === folder || path.startsWith(folder + "/");
+        for (const f of [folder, ...this.folders.filter((f) => f.startsWith(folder + "/"))]) await a.createFolder(col.root, remap(f));
+        for (const [key, req] of Object.entries(col.requests)) {
+          if (key.startsWith(folder + "/")) await a.saveRequest(col.root, remap(key), structuredClone($state.snapshot(req)));
+        }
+        for (const [f, cfg] of Object.entries(col.folder_configs ?? {})) {
+          if (inside(f) && Object.keys(cfg.vars ?? {}).length) await a.saveFolderVars(col.root, remap(f), { ...cfg.vars });
+        }
+        await this.adopt(await a.openCollection(col.root), { select: this.selected ?? undefined });
+        this.status = { kind: "ok", text: `Clonada en ${target}/` };
+      },
+    };
+  }
+
+  async revealFolder(folder: string) {
+    if (!this.collection) return;
+    await this.run(async () => { await (await api).revealFolder(this.collection!.root, folder); });
+  }
+
+  async openTerminal(folder: string) {
+    if (!this.collection) return;
+    await this.run(async () => { await (await api).openTerminal(this.collection!.root, folder); });
   }
 
   duplicate(key: string) {
@@ -533,10 +621,78 @@ class Store {
     await this.adopt(col);
   }
 
-  async saveFolderVars(folder: string, vars: Record<string, string>) {
-    const col = await (await api).saveFolderVars(this.collection!.root, folder, vars);
+  async saveFolderVars(folder: string, vars: Record<string, string>, secrets?: string[]) {
+    const col = await (await api).saveFolderVars(this.collection!.root, folder, vars, secrets);
     await this.adopt(col);
     this.status = { kind: "ok", text: `Guardado ${folder}/folder.toml` };
+  }
+
+  /** Exporta un entorno; los secretos salen con valor vacío. */
+  async exportEnvironment(name: string, format: "postman" | "harpoon") {
+    if (!this.collection) return;
+    await this.run(async () => {
+      const path = await (await api).exportEnvironment(this.collection!.root, name, format);
+      if (path) this.status = { kind: "ok", text: `Entorno ${name} exportado (secretos sin valor)` };
+    });
+  }
+
+  /** Elige un archivo de entorno y devuelve su vista previa (o null si se cancela). */
+  async pickEnvironmentFile(): Promise<{ path: string; preview: import("../services/api").EnvironmentPreview } | null> {
+    const a = await api;
+    const path = await a.pickFile();
+    if (!path) return null;
+    return { path, preview: await a.previewEnvironment(path) };
+  }
+
+  /** Importa el entorno del archivo con ese nombre y lo deja seleccionado. */
+  async importEnvironment(path: string, name: string) {
+    if (!this.collection) throw new Error("Abre una colección primero");
+    const col = await (await api).importEnvironment(this.collection.root, path, name);
+    await this.adopt(col, { select: this.selected ?? undefined });
+    await this.refreshMissingSecrets();
+    this.status = { kind: "ok", text: `Entorno ${name} importado` };
+  }
+
+  /** Recalcula los secretos sin valor para la colección y el entorno activos. */
+  async refreshMissingSecrets() {
+    const col = this.collection;
+    if (!col) { this.missingSecrets = []; return; }
+    try {
+      const missing = await (await api).missingSecrets(col.root, this.env);
+      if (this.collection?.root === col.root) this.missingSecrets = missing;
+    } catch { this.missingSecrets = []; }
+  }
+
+  /** Clave para recordar que el aviso de secretos ya se cerró. */
+  get missingKey() { return `${this.collection?.root ?? ""}::${this.env ?? ""}`; }
+
+  /** Guarda una variable secreta (valor local; en Git solo el nombre). */
+  async setSecret(scope: SecretScope, name: string, value: string) {
+    if (!this.collection) throw new Error("Abre una colección primero");
+    const col = await (await api).setSecret(this.collection.root, scope, name, value);
+    await this.adopt(col, { select: this.selected ?? undefined });
+    await this.refreshMissingSecrets();
+    const where = scope.kind === "collection" ? "la colección" : scope.kind === "folder" ? `la carpeta ${scope.path}` : `el entorno ${scope.name}`;
+    this.status = { kind: "ok", text: `Secreto {{${name}}} guardado en ${where} (fuera de Git)` };
+  }
+
+  /**
+   * Convierte un hallazgo del detector en secreto: guarda el valor como
+   * variable secreta y en la solicitud abierta deja `{{nombre}}`.
+   * Devuelve false si ese hallazgo no se puede convertir solo (cuerpo, scripts).
+   */
+  async convertFindingToSecret(finding: SecretFinding, name: string, scope: SecretScope): Promise<boolean> {
+    if (!this.draft) return false;
+    const draft = structuredClone($state.snapshot(this.draft));
+    const result = applySecret(draft, finding.location, name);
+    if (!result) return false;
+    const keepDraft = result.request;
+    await this.setSecret(scope, name, result.value);
+    this.draft = keepDraft; this.touch();
+    if (this.secretFindings) {
+      this.secretFindings.findings = this.secretFindings.findings.filter((f) => f !== finding && f.location !== finding.location);
+    }
+    return true;
   }
 
   async saveMeta(meta: CollectionMeta) {
@@ -592,6 +748,8 @@ class Store {
       if (interfaceFont) this.setInterfaceFont(interfaceFont.id);
       if (editorFont) this.setEditorFont(editorFont.id);
       if (size !== null && size.trim() !== "") this.setEditorFontSize(Number(size));
+      this.forceStacked = localStorage.getItem("harpoon.forceStacked") === "1";
+      this.sidebarHidden = localStorage.getItem("harpoon.sidebarHidden") === "1";
       const last = localStorage.getItem("harpoon.lastCollection");
       if (last) void this.open(last);
     } catch {

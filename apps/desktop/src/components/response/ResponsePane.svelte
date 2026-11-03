@@ -219,7 +219,7 @@
         {@render historyList()}
       {:else if tab === "tests"}
         {#if checks.length === 0}
-          <p class="muted pad">Sin comprobaciones. Añade aserciones en <b>Expect</b> o scripts en <b>Tests</b>.</p>
+          <p class="muted pad">Sin comprobaciones. Añade aserciones en <b>Assert</b> o scripts en <b>Tests</b>.</p>
         {:else}
           {#if x.assertions.length}<div class="group muted">EXPECT</div>{/if}
           <ul class="tests-list">

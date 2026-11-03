@@ -157,10 +157,8 @@ pub async fn oauth2_authorization(
     force_refresh: bool,
 ) -> Result<String> {
     let key = cfg.cache_key();
-    if !force_refresh {
-        if let Some(t) = cache.get(&key) {
-            return Ok(format!("{} {}", cfg.header_prefix, t.access_token));
-        }
+    if !force_refresh && let Some(t) = cache.get(&key) {
+        return Ok(format!("{} {}", cfg.header_prefix, t.access_token));
     }
 
     let mut form: Vec<(String, String)> = Vec::new();

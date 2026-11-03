@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { applyUrlInput, composeUrl } from "../../domain/urlQuery";
   import MethodSelect from "./MethodSelect.svelte";
   import VariableInspector from "./VariableInspector.svelte";
   import BodyTypeSelect from "./BodyTypeSelect.svelte";
@@ -20,11 +21,13 @@
   import { parseCurl } from "../../domain/curl";
   import CurlExport from "./CurlExport.svelte";
   import MultipartEditor from "./MultipartEditor.svelte";
+  import DocsEditor from "./DocsEditor.svelte";
   let exportingCurl = $state(false);
 
   let editorWidth = $state(0.48);
   let panelWidth = $state(1000);
-  const stacked = $derived(panelWidth < 760);
+  const stacked = $derived(store.forceStacked || panelWidth < 760);
+  let docsPreview = $state(false);
   function observePanels(node: HTMLDivElement) {
     const observer = new ResizeObserver(([entry]) => { panelWidth = entry.contentRect.width; });
     observer.observe(node);
@@ -72,7 +75,7 @@
     const root = store.collection?.root;
     const key = store.selected;
     const env = store.env;
-    const url = req?.url;
+    const url = composedUrl;
     // La colección cambia tras guardar variables o entornos.
     void store.collection?.folder_configs;
     void store.collection?.environments;
@@ -89,11 +92,28 @@
     return () => { active = false; };
   });
   const count = (o: Record<string, unknown>) => Object.keys(o).length;
+  const expectCount = $derived(req ? (req.expect.status != null ? 1 : 0) + (req.expect.max_time_ms != null ? 1 : 0) + req.expect.body_contains.length + count(req.expect.headers) : 0);
 
   function set<K extends keyof NonNullable<typeof req>>(k: K, v: NonNullable<typeof req>[K]) {
     if (!store.draft) return;
     store.draft[k] = v;
     store.touch();
+  }
+
+  // Barra de URL ⇄ Params (domain/urlQuery.ts). Mientras se escribe se
+  // respeta el texto tal cual (p. ej. un "?" recién tecleado); si Params
+  // cambia desde la tabla, la barra se recompone.
+  const composedUrl = $derived(req ? composeUrl(req.url, req.query, req.disabled_query) : "");
+  let typedUrl = $state<{ text: string; composed: string } | null>(null);
+  const urlBarValue = $derived(typedUrl && typedUrl.composed === composedUrl ? typedUrl.text : composedUrl);
+  function onUrlInput(text: string) {
+    if (!store.draft) return;
+    const next = applyUrlInput(text, { url: store.draft.url, query: store.draft.query, disabled_query: store.draft.disabled_query });
+    store.draft.url = next.url;
+    store.draft.query = next.query;
+    store.draft.disabled_query = next.disabled_query;
+    store.touch();
+    typedUrl = { text, composed: composeUrl(next.url, next.query, next.disabled_query) };
   }
 
   function pasteCurl(event: ClipboardEvent) {
@@ -209,8 +229,8 @@
         {/if}
         <div class="url">
           <VariableInput
-            value={req.url}
-            oninput={(e) => set("url", e.currentTarget.value)}
+            value={urlBarValue}
+            oninput={(e) => onUrlInput(e.currentTarget.value)}
             onkeydown={(e) => e.key === "Enter" && store.send()}
             onpaste={pasteCurl}
             placeholder={'{{base_url}}/ruta'}
@@ -235,7 +255,7 @@
       {/if}
     </div>
 
-    {#if req.url.includes("{{")}
+    {#if composedUrl.includes("{{")}
       <div class="resolved-url" title={urlError || resolvedUrl}>
         <span class="muted">URL resuelta</span>
         <span class:unresolved={!!urlError} class="mono">{urlError || resolvedUrl || "Resolviendo…"}</span>
@@ -250,18 +270,18 @@
       { id: "headers", label: "Headers", count: count(req.headers) || undefined },
       { id: "auth", label: "Auth" },
       { id: "variables", label: "Vars" },
-      ...(!isStream ? [{ id: "scripts", label: "Scripts" }, { id: "expect", label: "Expect" }, { id: "tests", label: "Tests" }] : []),
-      { id: "docs", label: "Docs" },
+      ...(!isStream ? [{ id: "scripts", label: "Script" }, { id: "expect", label: "Assert", count: expectCount || undefined }, { id: "tests", label: "Tests" }] : []),
+      { id: "docs", label: "Docs", dot: !!req.docs.trim() },
     ]} />
-    </div>{#if tab === "body" && type !== "graphql"}<BodyTypeSelect value={bodyKind} onchange={setBodyKind} />{/if}</div>
+    </div>{#if tab === "body" && type !== "graphql"}<BodyTypeSelect value={bodyKind} onchange={setBodyKind} />{/if}{#if tab === "docs"}<button class="preview-toggle" class:on={docsPreview} aria-pressed={docsPreview} onclick={() => (docsPreview = !docsPreview)} title="Alternar vista previa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Vista previa</span></button>{/if}</div>
 
     <div class="content">
       {#if tab === "params"}
         <p class="table-label">Parámetros de consulta</p>
-        <KeyValue descriptions={req.query_descriptions ?? {}} onDescriptionsChange={(values) => set("query_descriptions", values)} {variables} disabledKeys={req.disabled_query} onDisabledChange={(keys) => set("disabled_query", keys)} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
+        <KeyValue descriptions={req.query_descriptions ?? {}} onDescriptionsChange={(values) => set("query_descriptions", values)} {variables} disabledKeys={req.disabled_query} onDisabledChange={(keys) => set("disabled_query", keys)} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" secretLocation={(name) => `parámetro ${name}`} />
       {:else if tab === "headers"}
         <p class="table-label">Cabeceras de la solicitud</p>
-        <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", keys)} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} />
+        <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", keys)} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} secretLocation={(name) => `header ${name}`} />
       {:else if tab === "body"}
         <div class="body">
           {#if bodyKind === "json"}<div class="body-bar"><button class="btn small" onclick={formatJson}>Formatear JSON</button>{#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}</div>{/if}
@@ -288,7 +308,7 @@
               <div class="binary-row"><VariableInput value={req.body.type === "binary" ? req.body.path : ""} {variables} label="Ruta del archivo binario" placeholder="archivos/datos.bin" oninput={(e) => set("body", { type: "binary", path: e.currentTarget.value })} /><button class="btn small" disabled={isMock} onclick={async () => { const path = await (await api).pickFile(); if (path && store.draft?.body.type === "binary") set("body", { type: "binary", path }); }}>Elegir…</button></div>
             </div>
           {:else if bodyKind === "form"}
-            <KeyValue {variables} entries={req.body.type === "form" ? req.body.fields : {}} onchange={(fields) => set("body", { type: "form", fields })} keyPlaceholder="campo" addLabel="Añadir campo" />
+            <KeyValue {variables} entries={req.body.type === "form" ? req.body.fields : {}} onchange={(fields) => set("body", { type: "form", fields })} keyPlaceholder="campo" addLabel="Añadir campo" secretLocation={(name) => `campo del formulario ${name}`} />
           {:else if bodyKind === "multipart"}
             <MultipartEditor parts={req.body.type === "multipart" ? req.body.parts : []} {variables} onchange={(parts) => set("body", { type: "multipart", parts })} />
           {:else}
@@ -304,6 +324,7 @@
         <AuthForm
           auth={req.auth}
           onchange={(a: Auth) => set("auth", a)}
+          secretActions
           inheritHint={`Usa la auth definida en harpoon.toml (${store.collection?.meta.auth.type ?? "none"}).`}
         />
       {:else if tab === "expect"}
@@ -333,9 +354,7 @@
           </div>
         </div>
       {:else if tab === "docs"}
-        <div class="editor-wrap">
-          <CodeEditor value={req.docs} onchange={(v) => set("docs", v)} placeholder="Notas de esta solicitud" />
-        </div>
+        <DocsEditor value={req.docs} preview={docsPreview} onchange={(v) => set("docs", v)} />
       {/if}
     </div>
       </div>
@@ -447,6 +466,9 @@
   .request-tabbar { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
   .section-tabs { flex: 1; min-width: 0; }
   .section-tabs :global(.tabbar) { border-bottom: 0; }
+  .preview-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; font-size: 12px; color: var(--text-muted); flex: 0 0 auto; }
+  .preview-toggle:hover { color: var(--text); }
+  .preview-toggle.on { color: var(--accent); }
   .table-label { color: var(--text-muted); font-size: 12px; margin: 0 0 14px; }
   .graphql-errors { color: var(--err); font-size: 12px; overflow-wrap: anywhere; }
   .graphql-errors p { margin: 2px 0; }
