@@ -48,7 +48,7 @@ fn append_recorta_y_carga() {
     assert_eq!(b.body.len(), MAX_BODY);
 
     clear(tmp.path(), "big").unwrap();
-    assert!(load(tmp.path(), "big").is_empty());
+    assert_eq!(load(tmp.path(), "big"), vec![]);
 }
 
 #[test]

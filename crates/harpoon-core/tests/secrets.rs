@@ -56,7 +56,7 @@ fn secretos_de_coleccion_y_carpeta_quedan_fuera_de_git() {
     let c = Collection::load(root).unwrap();
     assert_eq!(c.meta.vars["api_key"], "super-secreto-123");
     assert_eq!(c.folder_configs["admin"].vars["admin_pass"], "pa55word!");
-    assert!(c.missing_secrets(None).is_empty());
+    assert_eq!(c.missing_secrets(None), vec![]);
 
     // Renombrar la carpeta mueve sus secretos.
     let mut c = c;
@@ -90,7 +90,7 @@ fn clon_sin_secretos_avisa_y_acepta_variables_del_sistema() {
     // SAFETY: test de un solo hilo para esta variable con nombre único.
     unsafe { std::env::set_var("HARPOON_HARPOON_TEST_CLONE_TOK", "desde-ci") };
     let c = Collection::load(root).unwrap();
-    assert!(c.missing_secrets(None).is_empty());
+    assert_eq!(c.missing_secrets(None), vec![]);
     let scope = c.scope(None).unwrap();
     assert_eq!(
         scope.interpolate("{{harpoon_test_clone_tok}}").unwrap(),
