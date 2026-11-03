@@ -1,19 +1,19 @@
 /* Harpoon — tokens de diseño. Oscuro por defecto, denso y limpio. */
 :root {
   color-scheme: dark;
-  --bg: #20272f;
-  --bg-panel: #1b222a;
-  --bg-raised: #29333e;
-  --bg-hover: #303d49;
-  --bg-active: #344551;
-  --border: #35424e;
-  --border-strong: #465866;
-  --text: #e5edf3;
-  --text-muted: #a7b6c3;
-  --text-faint: #7d91a1;
-  --accent: #72b9bd;
-  --accent-strong: #9ad3d3;
-  --accent-soft: rgba(114, 185, 189, 0.13);
+  --bg: #262d37;
+  --bg-panel: #20262f;
+  --bg-raised: #2f3743;
+  --bg-hover: #38424f;
+  --bg-active: #3e4b59;
+  --border: #3d4856;
+  --border-strong: #55636f;
+  --text: #f0f4f8;
+  --text-muted: #b8c4cf;
+  --text-faint: #8d9cab;
+  --accent: #7cc4c8;
+  --accent-strong: #a6dcdc;
+  --accent-soft: rgba(124, 196, 200, 0.16);
   --ok: #5fb87a;
   --warn: #e0a82e;
   --err: #e0665c;
@@ -32,7 +32,8 @@
   --editor-font-size: 12.5px;
   --radius: 6px;
   --titlebar: 46px;
-  --t: 120ms ease;
+  --t: 140ms cubic-bezier(.2, .7, .3, 1);
+  --shadow-pop: 0 14px 36px rgba(0, 0, 0, .32), 0 2px 6px rgba(0, 0, 0, .18);
 }
 
 :root[data-theme="light"] {
@@ -42,11 +43,11 @@
   --bg-raised: #ffffff;
   --bg-hover: #ececea;
   --bg-active: #e3e3e0;
-  --border: #e2e2df;
-  --border-strong: #cfcfca;
-  --text: #1e2024;
-  --text-muted: #6b6f78;
-  --text-faint: #a0a4ad;
+  --border: #dcdcd7;
+  --border-strong: #c2c2bc;
+  --text: #1a1c20;
+  --text-muted: #565b64;
+  --text-faint: #6f747d;
   --accent: #1f6f8b;
   --accent-strong: #185a70;
   --accent-soft: rgba(31, 111, 139, 0.12);
@@ -655,4 +656,88 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   box-shadow: none;
   outline: none;
   background: transparent;
+}
+
+/* ---------- Movimiento y acabado ---------- */
+
+/* Campos: anillo suave de foco en lugar de solo cambiar el borde. */
+input:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+.btn:active {
+  transform: translateY(0) scale(.98);
+}
+.btn.primary {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .12) inset, 0 2px 8px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.btn.primary:hover {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .16) inset, 0 6px 18px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.btn.icon:hover {
+  color: var(--text);
+}
+
+/* Pestañas: subrayado que crece desde el centro. */
+.tab {
+  position: relative;
+  border-bottom-color: transparent !important;
+}
+.tab::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transition: transform 220ms cubic-bezier(.2, .7, .3, 1);
+}
+.tab:hover::after {
+  transform: scaleX(.35);
+  background: var(--border-strong);
+}
+.tab.active::after {
+  transform: scaleX(1);
+  background: var(--accent);
+}
+
+/* Tablas clave/valor: cabecera y filas con más presencia. */
+.kv th {
+  color: var(--text);
+  font-weight: 600;
+}
+.kv tr {
+  transition: background var(--t);
+}
+.kv tbody tr:hover {
+  background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+}
+
+/* Menús y popovers: aparecen con un pequeño desplazamiento. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop-in {
+  animation: pop-in 160ms cubic-bezier(.2, .7, .3, 1) both;
+  transform-origin: top right;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(4px, -6px) rotate(-3deg); }
 }

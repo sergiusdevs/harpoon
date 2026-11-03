@@ -73,7 +73,7 @@
     <svg class="caret" class:rotated={open} width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-7 9z" fill="currentColor" /></svg>
   </button>
   {#if open}
-    <div class="menu" role="dialog" aria-label="Seleccionar entorno">
+    <div class="menu pop-in" role="dialog" aria-label="Seleccionar entorno">
       <div class="scopes" role="tablist" aria-label="Ámbito">
         <button type="button" role="tab" class="scope on" aria-selected="true">{@render dbIcon(14)} Colección</button>
         <button type="button" role="tab" class="scope" aria-selected="false" aria-disabled="true" disabled title="Los entornos globales todavía no están disponibles"><DevIcon name="globe" size={14} /> Global</button>
@@ -108,27 +108,29 @@
 
 <style>
   .environment { position: relative; flex: 0 0 auto; margin-left: 4px; font-size: 12px; -webkit-app-region: no-drag; }
-  .trigger { display: flex; align-items: center; gap: 7px; max-width: 200px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); }
+  .trigger { display: flex; align-items: center; gap: 7px; max-width: 200px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); transition: background var(--t), border-color var(--t), box-shadow var(--t); }
   .trigger:hover, .trigger[aria-expanded="true"] { border-color: var(--border-strong); background: var(--bg-hover); }
+  .trigger[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--accent-soft); }
   .db { display: flex; color: var(--accent); }
   .trigger.none .db, .trigger.none .current { color: var(--text-muted); }
   .current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .caret { flex: 0 0 auto; color: var(--text-muted); transition: transform var(--t); }
   .caret.rotated { transform: rotate(180deg); }
 
-  .menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: flex; flex-direction: column; width: 260px; max-width: calc(100vw - 16px); border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-raised); box-shadow: 0 12px 32px rgba(0, 0, 0, .28); overflow: hidden; }
+  .menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: flex; flex-direction: column; width: 260px; max-width: calc(100vw - 16px); border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg-raised); box-shadow: var(--shadow-pop); overflow: hidden; }
   .scopes { display: flex; gap: 14px; padding: 8px 12px 0; }
-  .scope { display: flex; align-items: center; gap: 6px; padding: 6px 2px 8px; border-bottom: 2px solid transparent; color: var(--text-muted); font-size: 12.5px; }
+  .scope { display: flex; align-items: center; gap: 6px; padding: 6px 2px 8px; border-bottom: 2px solid transparent; transition: color var(--t), border-color var(--t); color: var(--text-muted); font-size: 12.5px; }
   .scope.on { color: var(--text); border-bottom-color: var(--accent); }
   .scope.on :global(svg) { color: var(--accent); }
   .scope:disabled { opacity: .55; cursor: default; }
-  .search { display: flex; align-items: center; gap: 7px; margin: 10px 8px 6px; padding: 0 9px; height: 30px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-muted); }
-  .search:focus-within { border-color: var(--accent); }
+  .search { display: flex; align-items: center; gap: 7px; margin: 10px 8px 6px; padding: 0 9px; height: 30px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text-muted); transition: border-color var(--t), box-shadow var(--t); }
+  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); color: var(--accent); }
+  .search input:focus { box-shadow: none; }
   .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; }
   .options { max-height: 240px; min-height: 60px; overflow-y: auto; padding: 0 6px 6px; }
-  .options button { display: block; width: 100%; padding: 8px 12px; border-radius: 6px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .options button { display: block; transition: background var(--t), color var(--t), padding var(--t); width: 100%; padding: 8px 12px; border-radius: 6px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .options button.none { color: var(--text-muted); }
-  .options button.active { background: var(--bg-hover); }
+  .options button.active { background: var(--bg-hover); padding-left: 15px; }
   .options button.selected { background: var(--bg-active); color: var(--accent-strong); }
   .empty { margin: 0; padding: 12px; color: var(--text-muted); text-align: center; }
   .footer { display: flex; align-items: stretch; border-top: 1px solid var(--border); }

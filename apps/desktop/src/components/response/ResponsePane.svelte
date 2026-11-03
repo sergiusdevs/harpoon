@@ -557,9 +557,9 @@
   .empty p {
     margin: 0;
   }
-  .empty-plane { color: var(--text-faint); opacity: .65; margin-bottom: 18px; }
+  .empty-plane { color: var(--accent); opacity: .55; margin-bottom: 18px; animation: float 5s ease-in-out infinite; filter: drop-shadow(0 8px 18px color-mix(in srgb, var(--accent) 25%, transparent)); }
   .shortcuts { display: grid; grid-template-columns: auto auto; text-align: left; gap: 8px 24px; margin-top: 14px; color: var(--text-muted); font-size: 12px; }
-  .shortcuts kbd { font: inherit; color: var(--text); }
+  .shortcuts kbd { font: 11px var(--mono); color: var(--text); padding: 1px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--bg-raised); justify-self: start; }
   .empty-title { color: var(--text); font-size: 14px; font-weight: 600; }
   .small {
     font-size: 11px;

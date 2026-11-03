@@ -72,9 +72,9 @@
 {/if}
 
 <style>
-  .git { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; max-width: 180px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text); font-size: 12px; -webkit-app-region: no-drag; }
+  .git { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; max-width: 180px; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text); font-size: 12px; -webkit-app-region: no-drag; transition: background var(--t), border-color var(--t), transform var(--t); }
   .git :global(svg) { flex: 0 0 auto; color: var(--accent); }
-  button.git:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-hover); }
+  button.git:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
   .git.on { border-color: transparent; background: transparent; color: var(--text-muted); }
   .git.on :global(svg) { color: var(--ok); }
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

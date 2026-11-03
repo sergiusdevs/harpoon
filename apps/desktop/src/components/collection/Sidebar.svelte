@@ -618,6 +618,7 @@
   }
   .item.active {
     background: var(--bg-active);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .verb {
     flex: 0 0 auto;

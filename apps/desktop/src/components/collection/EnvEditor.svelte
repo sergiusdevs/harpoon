@@ -283,7 +283,7 @@
   .ico.small { width: 26px; height: 26px; }
   .ico.danger:hover:not(:disabled) { color: var(--err); }
   .menu-anchor { position: relative; }
-  .menu { position: absolute; right: 0; top: 32px; z-index: 5; width: 230px; display: flex; flex-direction: column; padding: 5px; background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
+  .menu { position: absolute; right: 0; top: 32px; z-index: 5; width: 230px; display: flex; flex-direction: column; padding: 5px; background: var(--bg-raised); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-pop); animation: pop-in 160ms cubic-bezier(.2, .7, .3, 1) both; transform-origin: top right; }
   .menu button { text-align: left; padding: 8px 10px; border-radius: 5px; font-size: 13px; }
   .menu button:hover { background: var(--bg-hover); }
   .menu p { margin: 4px 10px 6px; font-size: 11px; color: var(--text-faint); line-height: 1.4; }

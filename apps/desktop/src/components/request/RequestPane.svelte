@@ -446,9 +446,10 @@
     align-items: center;
     flex-wrap: nowrap;
   }
-  .address { display: flex; flex: 1 1 0; min-width: 0; align-items: center; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); min-height: 36px; }
+  .address { display: flex; flex: 1 1 0; min-width: 0; align-items: center; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-panel); min-height: 36px; transition: border-color var(--t), box-shadow var(--t), background var(--t); }
+  .address:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong)); }
   .url :global(.integrated input) { height: 34px; padding: 6px 10px; }
-  .address:focus-within { border-color: var(--accent); }
+  .address:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--bg); }
   .address .save { margin: 0 6px; flex: 0 0 auto; }
   .request-type { flex: 0 0 auto; min-height: 38px; max-width: 130px; font-size: 11px; min-height: 26px; padding: 3px 7px; background: transparent; border-color: transparent; }
   .send { border-radius: 7px; padding: 6px 15px; font-size: 12px; justify-content: center; min-width: 76px; min-height: 36px; flex: 0 0 auto; }

@@ -83,7 +83,9 @@
     border: 1px solid var(--border-strong);
     border-radius: 8px;
     padding: 4px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-pop);
+    animation: pop-in 140ms cubic-bezier(.2, .7, .3, 1) both;
+    transform-origin: top left;
     display: flex;
     flex-direction: column;
   }
