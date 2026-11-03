@@ -214,9 +214,12 @@ En el menú de intercambio se puede elegir Postman v2.1. También se puede usar
 `harpoon postman-import coleccion.postman_collection.json ./nueva-coleccion`.
 La importación crea una carpeta nueva. Se trasladan solicitudes, carpetas,
 variables de colección, cabeceras, parámetros, cuerpos compatibles y auth
-básica, bearer, digest o API key. Los scripts se conservan, pero hay que revisar
-su compatibilidad. Se muestran avisos para opciones no trasladadas: entre otras,
-OAuth 2, variables de carpeta, entornos, aserciones y archivos adjuntos. Las
+básica, bearer, digest o API key. La auth y los scripts de cada carpeta Postman
+van a su `folder.toml` (y vuelven a la carpeta al exportar); las solicitudes sin
+auth propia la heredan, igual que en Postman. Los scripts se conservan, pero hay
+que revisar su compatibilidad. Se muestran avisos para opciones no trasladadas:
+entre otras, OAuth 2, variables y cabeceras de carpeta (Postman no las tiene),
+entornos, aserciones y archivos adjuntos. Las
 credenciales presentes en las solicitudes pueden quedar en el archivo exportado.
 
 ## Importación OpenAPI

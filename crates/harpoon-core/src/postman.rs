@@ -17,6 +17,9 @@ pub struct Preview {
     requests: Vec<(String, Request)>,
     #[serde(skip)]
     folders: Vec<String>,
+    /// Auth y scripts de carpeta, que van a su `folder.toml`.
+    #[serde(skip)]
+    folder_settings: IndexMap<String, (Auth, Scripts)>,
     #[serde(skip)]
     vars: IndexMap<String, String>,
     /// Variables de tipo `secret` en Postman: se importan como secretas.
@@ -137,13 +140,7 @@ fn scripts(v: &Value, warnings: &mut Vec<String>, context: &str) -> Scripts {
     out
 }
 #[allow(clippy::too_many_lines, clippy::many_single_char_names)]
-fn parse_items(
-    items: &Value,
-    parent: &str,
-    inherited: &Auth,
-    preview: &mut Preview,
-    depth: usize,
-) -> Result<()> {
+fn parse_items(items: &Value, parent: &str, preview: &mut Preview, depth: usize) -> Result<()> {
     if depth > 32 {
         return Err(err("demasiadas carpetas anidadas"));
     }
@@ -165,18 +162,18 @@ fn parse_items(
             n += 1;
         }
         if item["item"].is_array() {
+            // Como en Postman: la carpeta sin auth propia hereda de la superior.
             let a = if item["auth"].is_object() {
                 auth(&item["auth"], &mut preview.warnings, name)
             } else {
-                inherited.clone()
+                Auth::Inherit
             };
-            if item["event"].is_array() {
-                preview
-                    .warnings
-                    .push(format!("{name}: scripts de carpeta no importados"));
+            let s = scripts(&item["event"], &mut preview.warnings, name);
+            if !matches!(a, Auth::Inherit) || !s.is_empty() {
+                preview.folder_settings.insert(key.clone(), (a, s));
             }
             preview.folders.push(key.clone());
-            parse_items(&item["item"], &key, &a, preview, depth + 1)?;
+            parse_items(&item["item"], &key, preview, depth + 1)?;
             continue;
         }
         let r = &item["request"];
@@ -211,7 +208,7 @@ fn parse_items(
         req.auth = if r["auth"].is_object() {
             auth(&r["auth"], &mut preview.warnings, name)
         } else {
-            inherited.clone()
+            Auth::Inherit
         };
         for h in r["header"].as_array().into_iter().flatten() {
             let k = text(h, "key");
@@ -374,6 +371,7 @@ pub(crate) fn parse(v: &Value) -> Result<Preview> {
         warnings: Vec::new(),
         requests: Vec::new(),
         folders: Vec::new(),
+        folder_settings: IndexMap::new(),
         vars: fields(&v["variable"]),
         secrets: v["variable"]
             .as_array()
@@ -403,7 +401,7 @@ pub(crate) fn parse(v: &Value) -> Result<Preview> {
         p.auth = Auth::None;
     }
     p.scripts = scripts(&v["event"], &mut p.warnings, "Colección");
-    parse_items(&v["item"], "", &Auth::Inherit, &mut p, 0)?;
+    parse_items(&v["item"], "", &mut p, 0)?;
     Ok(p)
 }
 pub fn import(p: &Preview, target: &Path) -> Result<Collection> {
@@ -421,6 +419,9 @@ pub fn import(p: &Preview, target: &Path) -> Result<Collection> {
         c.save_meta(meta)?;
         for f in &p.folders {
             c.create_folder(f)?;
+        }
+        for (folder, (auth, scripts)) in &p.folder_settings {
+            c.save_folder_settings(folder, IndexMap::new(), auth.clone(), scripts.clone())?;
         }
         for (k, r) in &p.requests {
             c.save_request(k, r.clone())?;
@@ -601,6 +602,23 @@ fn insert_item(items: &mut Vec<Value>, segments: &[&str], value: Value) {
         value,
     );
 }
+/// Nodo de carpeta (`{"name", "item": [...]}`) para la ruta dada, creándolo si falta.
+fn folder_node<'a>(items: &'a mut Vec<Value>, segments: &[&str]) -> &'a mut Value {
+    let index = items
+        .iter()
+        .position(|v| v["name"] == segments[0] && v["item"].is_array())
+        .unwrap_or_else(|| {
+            items.push(json!({"name":segments[0],"item":[]}));
+            items.len() - 1
+        });
+    if segments.len() == 1 {
+        return &mut items[index];
+    }
+    folder_node(
+        items[index]["item"].as_array_mut().expect("folder item"),
+        &segments[1..],
+    )
+}
 #[allow(clippy::missing_panics_doc)]
 pub fn export(c: &Collection) -> (Value, Vec<String>) {
     let mut warnings = Vec::new();
@@ -636,8 +654,21 @@ pub fn export(c: &Collection) -> (Value, Vec<String>) {
             }
         }
     }
-    if !c.folder_configs.is_empty() {
-        warnings.push("Las variables de carpeta no se exportan a Postman".into());
+    for (folder, config) in &c.folder_configs {
+        let node = folder_node(&mut items, &folder.split('/').collect::<Vec<_>>());
+        let a = post_auth(&config.auth, &mut warnings, folder);
+        if !a.is_null() {
+            node["auth"] = a;
+        }
+        let e = events(&config.scripts, &mut warnings, folder);
+        if !e.is_empty() {
+            node["event"] = Value::Array(e);
+        }
+        if !config.vars.is_empty() || !config.headers.is_empty() {
+            warnings.push(format!(
+                "{folder}: Postman no tiene variables ni cabeceras de carpeta; no se exportan"
+            ));
+        }
     }
     if !c.environments.is_empty() {
         warnings.push("Los entornos no se incluyen en la colección Postman".into());
