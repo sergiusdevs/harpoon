@@ -153,7 +153,10 @@ manual: Harpoon genera el límite multipart automáticamente. En los scripts,
 ## Reglas de compatibilidad
 
 - `format` se incrementa solo en cambios incompatibles; `harpoon` migra con `harpoon migrate`.
-- Claves desconocidas se conservan al reescribir (fase 1, `toml_edit`).
+- Al guardar desde la app o la CLI se conservan los comentarios, el orden de las
+  claves y el formato de los valores que no cambian (comillas simples, tablas en
+  línea…); solo se tocan las líneas que cambian, así el diff de Git es mínimo.
+  Las claves que Harpoon no conoce en una solicitud no se conservan.
 
 ### Configuración por carpeta (`folder.toml`)
 

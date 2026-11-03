@@ -759,8 +759,14 @@ fn read_toml<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
     })
 }
 
+/// Escribe `value` en `path`. Si el archivo ya existe, conserva sus
+/// comentarios, orden y formato (ver [`crate::toml_merge`]).
 fn write_toml<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
-    write_file(path, &toml::to_string_pretty(value)?)
+    let fresh = toml::to_string_pretty(value)?;
+    let merged = fs::read_to_string(path)
+        .ok()
+        .and_then(|old| crate::toml_merge::merge(&old, &fresh));
+    write_file(path, merged.as_deref().unwrap_or(&fresh))
 }
 
 fn write_file(path: &Path, contents: &str) -> Result<()> {
