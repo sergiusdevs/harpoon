@@ -191,6 +191,7 @@
     { label: "Nueva carpeta", icon: "folder-plus", action: () => store.newFolder("") },
     { label: "Ejecutar", icon: "play", action: () => store.openRunner() },
     { label: "Validar colección", icon: "vars", action: () => { store.modal = "validate"; } },
+    { label: "Recargar desde disco", icon: "collapse", action: () => void store.refreshFromDisk() },
     { label: "Importar desde cURL", icon: "terminal", action: () => store.importCurl() },
     { label: "Importar / exportar", icon: "share", action: () => { store.modal = "share"; } },
     { label: "Plegar todo", icon: "collapse", action: () => { for (const f of store.folders) collapsed[f] = true; } },

@@ -70,7 +70,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onfocus={() => void store.refreshFromDisk()} />
 
 <div class="app">
   {#if !store.sidebarHidden}

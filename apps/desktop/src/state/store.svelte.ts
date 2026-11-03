@@ -201,6 +201,36 @@ class Store {
     }
   }
 
+  private refreshing = false;
+
+  /**
+   * Vuelve a leer la colección del disco (cambios hechos fuera: asistentes por
+   * MCP, editor, `git pull`). Los borradores sin guardar se conservan.
+   */
+  async refreshFromDisk() {
+    const root = this.collection?.root;
+    if (!root || this.refreshing || this.sending) return;
+    this.refreshing = true;
+    try {
+      const col = await (await api).openCollection(root);
+      if (this.collection?.root !== root) return;
+      const before = JSON.stringify($state.snapshot(this.collection.requests));
+      const foldersBefore = this.folders.join("\n");
+      await this.adopt(col);
+      // La solicitud abierta sin cambios pendientes muestra lo que hay en disco.
+      if (this.selected && !this.dirty && col.requests[this.selected]) {
+        this.draft = structuredClone($state.snapshot(this.collection.requests[this.selected]));
+      }
+      if (JSON.stringify($state.snapshot(this.collection.requests)) !== before || this.folders.join("\n") !== foldersBefore) {
+        this.status = { kind: "ok", text: "Colección actualizada con los cambios del disco" };
+      }
+    } catch {
+      /* la colección pudo moverse o borrarse: se mantiene lo cargado */
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
   private remember(path: string) {
     try {
       localStorage.setItem("harpoon.lastCollection", path);
