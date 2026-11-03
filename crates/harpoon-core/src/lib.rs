@@ -16,6 +16,7 @@ pub mod history;
 pub mod model;
 pub mod openapi;
 pub mod postman;
+pub mod redact;
 pub mod scan;
 pub mod secrets;
 pub mod share;

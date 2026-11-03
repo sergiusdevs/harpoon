@@ -20,6 +20,26 @@ Sin cuenta. Sin nube. Sin telemetría.
 - **Un solo binario.** El motor de scripts (QuickJS) y el servidor mock van embebidos:
   nada de Node ni runtimes externos.
 - **CLI primero.** Todo lo que hace la app se puede hacer con `harpoon` desde la terminal o en CI.
+- **Listo para asistentes de IA.** Claude Code, Codex o Cursor pueden consultar tus APIs
+  por MCP sin ver nunca un secreto ([MCP](docs/mcp.md)).
+
+## Tus APIs en Claude Code y Codex, sin tus secretos
+
+`harpoon mcp` es un servidor [MCP](docs/mcp.md) local: el asistente puede listar tus
+solicitudes, ver sus cabeceras, cuerpos y auth, resolver URLs por entorno y validar
+la colección. Las variables secretas se ven como `{{api_key}}` y los valores sensibles
+como `‹oculto›`; Harpoon lo garantiza antes de responder. Sin puertos ni red: va por stdio.
+
+```sh
+claude mcp add harpoon -- harpoon mcp -C ~/mi-api
+```
+
+```toml
+# ~/.codex/config.toml
+[mcp_servers.harpoon]
+command = "harpoon"
+args = ["mcp", "-C", "/Users/tu-usuario/mi-api"]
+```
 
 ## Qué incluye
 
@@ -32,7 +52,11 @@ Sin cuenta. Sin nube. Sin telemetría.
 | **Variables** | Por colección, carpeta, entorno y ejecución; dinámicas (`{{$uuid}}`, `{{$timestamp}}`, `{{$randomInt 1 10}}`…) |
 | **Pruebas** | Aserciones declarativas `[expect]` y scripts JS `pre` / `post` / `test` con `expect` estilo Chai |
 | **Secretos** | Fuera de Git (`*.secrets.toml`), por variable de entorno `HARPOON_<NOMBRE>` y detector de secretos al guardar |
-| **Importar / exportar** | Postman, OpenAPI 3, cURL y colecciones compartidas de Harpoon |
+| **Importar / exportar** | Postman (con auth y scripts de carpeta), OpenAPI 3, cURL y colecciones compartidas de Harpoon |
+| **Generar código** | cURL, JavaScript (fetch y axios), Python, Go, Java y C#, con variables, auth y carpetas ya resueltas |
+| **Validar** | `harpoon validate` y en la app: variables sin definir, URLs, JSON, archivos y secretos sin valor |
+| **Git** | Guardar conserva comentarios, orden y formato de los TOML: diffs mínimos. Escrituras atómicas |
+| **IA (MCP)** | `harpoon mcp` para Claude Code, Codex, Cursor… solo lectura y sin secretos |
 | **Extras** | Servidor mock local, historial de respuestas, cookies por colección y runner de colecciones |
 
 ## Instalación
@@ -101,17 +125,21 @@ harpoon postman-import api.postman_collection.json ./api
 harpoon openapi-import openapi.yaml ./api
 harpoon share-export api.harpoon.json      # colección completa, sin estado local ni secretos
 harpoon mock --port 8787                   # respuestas de mocks.toml, solo en localhost
+harpoon mcp                                # servidor MCP para asistentes de IA (ver docs/mcp.md)
 ```
 
 ## App de escritorio
 
-Tauri 2 + Svelte 5, con temas claro y oscuro.
+Tauri 2 + Svelte 5, con 23 temas (entre ellos Catppuccin, Gruvbox, Solarized, Rosé Pine,
+GitHub, One Dark, Kanagawa y Tokyo Night) y modo automático que sigue al sistema.
 
 - Árbol de la colección con arrastrar y soltar, menú contextual, búsqueda global (`⌘K`) y teclado completo.
 - Pestañas de solicitudes con borradores independientes y aviso de cambios sin guardar.
 - Selector de entornos con buscador y estado de Git de la colección en la barra de título.
+- Ajustes por carpeta (variables, cabeceras, auth y scripts) con lo heredado a la vista.
 - Cabeceras heredadas y del runtime visibles en cada solicitud; edición en bloque con `Nombre: valor`.
-- Autocompletado de `{{variables}}` con su origen y aviso de las que no existen.
+- Autocompletado de `{{variables}}` con su origen y aviso de las que no existen, también al crear solicitudes.
+- Generar código en 7 lenguajes y validar la colección desde su menú.
 - Respuesta con JSON plegable, búsqueda, vista HTML aislada, imágenes, cookies y lo que se envió de verdad.
 - Historial de respuestas con comparación, consola de scripts y panel de red.
 - Guardado atómico: un cierre inesperado nunca deja un archivo a medias.
@@ -126,6 +154,7 @@ Atajos principales: `⌘↩` enviar · `⌘S` guardar · `⌘N` nueva solicitud 
 | [Scripts](docs/scripting.md) | API `harpoon.req` / `res` / `vars`, `test` y `expect` |
 | [Auth](docs/auth.md) | Todos los tipos de auth, mTLS y uso en CI |
 | [Secretos](docs/secrets.md) | Dónde vive cada valor y cómo trabajar con Git |
+| [MCP](docs/mcp.md) | Conectar Claude Code, Codex, Cursor… y qué nunca se comparte |
 | [Roadmap](ROADMAP.md) | Lo que viene: llavero del sistema, gRPC, docs HTML, distribución |
 
 ## Desarrollo

@@ -2,6 +2,7 @@
 
 mod check;
 mod datafile;
+mod mcp;
 mod output;
 mod validate;
 
@@ -74,6 +75,11 @@ enum Command {
     },
     /// Lista las solicitudes y entornos de la colección.
     List,
+    /// Servidor MCP por stdio para asistentes (Claude Code, Codex…).
+    ///
+    /// Solo lectura y sin secretos: las variables secretas se muestran como
+    /// `{{nombre}}` y los valores sensibles como ‹oculto›.
+    Mcp,
     /// Revisa la colección sin enviar nada: variables sin definir, URLs, JSON,
     /// archivos que no existen y secretos sin valor.
     ///
@@ -258,6 +264,14 @@ async fn run() -> anyhow::Result<ExitCode> {
                 imported.variables,
                 imported.secrets.len()
             );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Mcp => {
+            let col = open(cli.collection.as_deref())?;
+            eprintln!("harpoon mcp · {} · {}", col.meta.name, col.root.display());
+            let stdin = std::io::stdin();
+            mcp::Server::new(&col.root, cli.env.clone())
+                .run(stdin.lock(), std::io::stdout().lock())?;
             Ok(ExitCode::SUCCESS)
         }
         Command::Validate { json, strict } => {

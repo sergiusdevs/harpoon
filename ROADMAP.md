@@ -95,3 +95,10 @@ Diseño original:
 - Sincronización en la nube, cuentas de usuario, telemetría.
 - Gestión de licencias o funciones "enterprise".
 - Reimplementar Git.
+
+## IA sin secretos (MCP)
+
+- ✅ `harpoon mcp`: servidor MCP local de solo lectura (listar, ver, resolver URLs,
+  validar) con los secretos enmascarados por Harpoon.
+- `--allow-send`: enviar solicitudes desde el asistente con respuestas enmascaradas.
+- `--allow-write`: crear y editar solicitudes con el detector de secretos activo.
