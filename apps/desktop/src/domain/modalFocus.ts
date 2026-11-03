@@ -21,7 +21,10 @@ export function modalFocus(node: HTMLElement, initial: Options) {
   let options = initial;
   const layer = { node, previous: document.activeElement };
   layers.push(layer); syncInert();
-  queueMicrotask(() => { if (layers.at(-1) === layer) (focusable(node)[0] ?? node).focus(); });
+  // Foco inicial en el primer campo (no en el botón de cerrar); si no hay, en el propio diálogo.
+  if (!node.hasAttribute("tabindex")) node.tabIndex = -1;
+  const firstField = () => node.querySelector<HTMLElement>("[autofocus], input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([disabled]), select:not([disabled]), textarea:not([disabled])");
+  queueMicrotask(() => { if (layers.at(-1) === layer && !node.contains(document.activeElement)) (firstField() ?? node).focus(); });
   const keydown = (event: KeyboardEvent) => {
     if (layers.at(-1) !== layer) return;
     // Escape cierra primero un desplegable abierto dentro del diálogo (sugerencias, combobox).

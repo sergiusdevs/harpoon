@@ -3,7 +3,7 @@
   interface Props {
     name: "folder" | "folder-open" | "get" | "post" | "put" | "patch" | "delete" | "head" | "options" | "file"
       | "file-plus" | "folder-plus" | "play" | "copy" | "pencil" | "share" | "collapse" | "reveal" | "server"
-      | "settings" | "terminal" | "x" | "dots" | "vars" | "lock" | "eye" | "eye-off";
+      | "settings" | "terminal" | "x" | "dots" | "vars" | "lock" | "eye" | "eye-off" | "refresh" | "check-circle" | "sparkles" | "search" | "cookie";
     size?: number;
   }
   let { name, size = 14 }: Props = $props();
@@ -56,6 +56,16 @@
     <circle cx="5" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="19" cy="12" r="1" fill="currentColor" />
   {:else if name === "vars"}
     <path d="M8 4c-2 0-3 1-3 3v2c0 1-1 2-2 3 1 1 2 2 2 3v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1 1 2 2 3-1 1-2 2-2 3v2c0 2-1 3-3 3" />
+  {:else if name === "refresh"}
+    <path d="M20 11a8 8 0 0 0-14.6-4.5L4 8" /><path d="M4 3v5h5" /><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16" /><path d="M20 21v-5h-5" />
+  {:else if name === "check-circle"}
+    <circle cx="12" cy="12" r="9" /><path d="m8.5 12.5 2.5 2.5 4.5-5" />
+  {:else if name === "sparkles"}
+    <path d="M12 3l1.8 4.6L18.5 9l-4.7 1.5L12 15l-1.8-4.5L5.5 9l4.7-1.4z" /><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" />
+  {:else if name === "search"}
+    <circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" />
+  {:else if name === "cookie"}
+    <path d="M12 3a9 9 0 1 0 9 9 4 4 0 0 1-5-4 4 4 0 0 1-4-5z" /><path d="M8.5 9.5h.01M15 15h.01M9.5 15.5h.01M13 12h.01" />
   {:else if name === "lock"}
     <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
   {:else if name === "eye"}

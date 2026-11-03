@@ -186,24 +186,25 @@
     { label: "Importar desde cURL", icon: "terminal", sep: true, action: () => store.importCurl() },
   ];
   const headerMenu = (): Item[] => [
-    { label: "Buscar en el contenido…", icon: "file", action: () => { store.modal = "search"; } },
+    { label: "Buscar en el contenido…", icon: "search", action: () => { store.modal = "search"; } },
     ...rootMenu().filter((item) => item.label !== "Nueva solicitud" && item.label !== "Nueva carpeta" && item.label !== "Importar desde cURL"),
   ];
+  // Agrupado: crear · revisar y ejecutar · herramientas · archivos · ajustes.
   const rootMenu = (): Item[] => [
     { label: "Nueva solicitud", icon: "file-plus", shortcut: "n", action: () => store.newRequest("") },
     { label: "Nueva carpeta", icon: "folder-plus", action: () => store.newFolder("") },
-    { label: "Ejecutar", icon: "play", action: () => store.openRunner() },
-    { label: "Validar colección", icon: "vars", action: () => { store.modal = "validate"; } },
-    { label: "Asistentes IA (MCP)", icon: "share", action: () => { store.modal = "mcp"; } },
-    { label: "Recargar desde disco", icon: "collapse", action: () => void store.refreshFromDisk() },
     { label: "Importar desde cURL", icon: "terminal", action: () => store.importCurl() },
-    { label: "Importar / exportar", icon: "share", action: () => { store.modal = "share"; } },
+    { label: "Ejecutar", icon: "play", sep: true, action: () => store.openRunner() },
+    { label: "Validar colección", icon: "check-circle", action: () => { store.modal = "validate"; } },
+    { label: "Asistentes IA (MCP)", icon: "sparkles", sep: true, action: () => { store.modal = "mcp"; } },
+    { label: "Servidor mock", icon: "server", badge: "Beta", action: () => { store.modal = "mock"; } },
+    { label: "Cookies", icon: "cookie", action: () => { store.modal = "cookies"; } },
+    { label: "Importar / exportar", icon: "share", sep: true, action: () => { store.modal = "share"; } },
+    { label: "Recargar desde disco", icon: "refresh", action: () => void store.refreshFromDisk() },
     { label: "Plegar todo", icon: "collapse", action: () => { for (const f of store.folders) collapsed[f] = true; } },
     { label: "Mostrar en Finder", icon: "reveal", action: () => store.revealFolder("") },
-    { label: "Servidor mock", icon: "server", badge: "Beta", action: () => { store.modal = "mock"; } },
-    { label: "Cookies", icon: "lock", action: () => { store.modal = "cookies"; } },
-    { label: "Ajustes", icon: "settings", sep: true, action: () => (store.modal = "settings") },
     { label: "Abrir en Terminal", icon: "terminal", shortcut: "t", action: () => store.openTerminal("") },
+    { label: "Ajustes", icon: "settings", sep: true, action: () => (store.modal = "settings") },
   ];
 
   // ---- arrastrar y soltar
@@ -395,8 +396,8 @@
   {/if}
 
     <nav class="app-actions" aria-label="Accesos de la aplicación">
-      {#if store.collection}<button class="btn app-action" onclick={() => (store.modal = "mcp")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.5L12 15l-1.8-4.5L5.5 9l4.7-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg><span>Asistentes IA (MCP)</span></button>{/if}
-      {#if store.collection}<button class="btn app-action" onclick={() => (store.modal = "mock")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6h1M7 17h1"/></svg><span>Servidor mock</span></button>{/if}
+      {#if store.collection}<button class="btn app-action" title="Asistentes IA (MCP)" aria-label="Asistentes IA (MCP)" onclick={() => (store.modal = "mcp")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.5L12 15l-1.8-4.5L5.5 9l4.7-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg><span>Asistentes IA (MCP)</span></button>{/if}
+      {#if store.collection}<button class="btn app-action" title="Servidor mock" aria-label="Servidor mock" onclick={() => (store.modal = "mock")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6h1M7 17h1"/></svg><span>Servidor mock</span></button>{/if}
       {#if streams.sessions.length}
         <button class="btn app-action" onclick={() => (store.modal = "stream")}>
           <span class="connection-dot" class:connected={streams.activeCount > 0}></span>
@@ -510,6 +511,14 @@
   .app-action :global(svg) {
     flex: 0 0 auto;
   }
+  /* En ventanas bajas el pie pasa a una fila de iconos para dejar sitio al árbol. */
+  @media (max-height: 720px) {
+    .app-actions { flex-direction: row; flex-wrap: wrap; justify-content: space-between; padding: 6px 8px; }
+    .app-action { width: auto; min-height: 30px; padding: 7px; justify-content: center; border-radius: 7px; }
+    .app-action:hover { background: var(--bg-hover); }
+    .app-action > :global(span), .app-action > :global(kbd) { display: none; }
+    .app-action > :global(.connection-dot) { display: block; }
+  }
   .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); margin: 0 4px; }
   .connection-dot.connected { background: var(--ok); }
   .connection-count { margin-left: auto; font-size: 10px; }
@@ -536,7 +545,8 @@
   }
   .head-btn { display: inline-grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border-radius: 7px; color: var(--text-muted); transition: background var(--t), color var(--t); }
   .head-btn:hover, .head-btn.open { color: var(--text); background: var(--bg-hover); }
-  .head-btn.on { color: var(--accent-strong); background: var(--accent-soft); }
+  /* El buscador está visible por defecto: "on" no se resalta, solo se nota al ocultarlo. */
+  .head-btn.on { color: var(--text); }
   .search {
     position: relative;
     display: flex;

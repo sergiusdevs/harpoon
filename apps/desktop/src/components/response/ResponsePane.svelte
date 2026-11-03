@@ -546,13 +546,20 @@
   }
   .empty {
     flex: 1;
+    min-height: 0;
+    overflow: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: safe center;
     gap: 8px;
     padding: 24px;
     text-align: center;
+    container-type: size;
+  }
+  /* En paneles bajos (respuesta debajo, ventana pequeña) solo el mensaje. */
+  @container (max-height: 300px) {
+    .empty-plane, .shortcuts { display: none; }
   }
   .empty p {
     margin: 0;

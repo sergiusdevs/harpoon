@@ -267,7 +267,7 @@
       ...(!isStream ? [{ id: "scripts", label: "Script" }, { id: "expect", label: "Assert", count: expectCount || undefined }, { id: "tests", label: "Tests" }] : []),
       { id: "docs", label: "Docs", dot: !!req.docs.trim() },
     ]} />
-    </div>{#if tab === "body" && type !== "graphql"}<BodyTypeSelect value={bodyKind} onchange={setBodyKind} />{/if}{#if tab === "docs"}<button class="preview-toggle" class:on={docsPreview} aria-pressed={docsPreview} onclick={() => (docsPreview = !docsPreview)} title="Alternar vista previa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Vista previa</span></button>{/if}</div>
+    </div>{#if tab === "docs"}<button class="preview-toggle" class:on={docsPreview} aria-pressed={docsPreview} onclick={() => (docsPreview = !docsPreview)} title="Alternar vista previa"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Vista previa</span></button>{/if}</div>
 
     <div class="content">
       {#if tab === "params"}
@@ -282,7 +282,12 @@
         <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", [...keys, ...disabledRuntime(req, folderHeaders).filter((name) => !keys.some((k) => k.toLowerCase() === name.toLowerCase()))])} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} secretLocation={(name) => `header ${name}`} />
       {:else if tab === "body"}
         <div class="body">
-          {#if bodyKind === "json"}<div class="body-bar"><button class="btn small" onclick={formatJson}>Formatear JSON</button>{#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}</div>{/if}
+          {#if type !== "graphql"}
+            <div class="body-bar">
+              <BodyTypeSelect value={bodyKind} onchange={setBodyKind} />
+              {#if bodyKind === "json"}<button class="btn small" onclick={formatJson}>Formatear JSON</button>{#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}{/if}
+            </div>
+          {/if}
           {#if bodyKind === "json" || bodyKind === "text" || bodyKind === "xml"}
             <div class="editor-wrap">
               <CodeEditor value={bodyText} language={bodyKind === "json" ? "json" : "text"} onchange={setBodyText} />
@@ -461,6 +466,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+    margin-bottom: 10px;
   }
   .request-tabbar { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
   .section-tabs { flex: 1; min-width: 0; }

@@ -45,7 +45,7 @@
   </div>
 {/if}
 <style>
-  .trigger { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11.5px; padding: 0 10px; margin: 6px; border: 1px solid transparent; border-radius: 5px; white-space: nowrap; }
+  .trigger { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; height: 28px; color: var(--text); font-size: 12px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); white-space: nowrap; transition: background var(--t), border-color var(--t); }
   .trigger:hover, .trigger.open { color: var(--text); background: var(--bg-raised); border-color: var(--border-strong); }
   .body-menu { position: fixed; z-index: 65; width: 225px; max-height: calc(100vh - 16px); overflow-y: auto; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--bg-raised); padding: 5px; box-shadow: 0 8px 20px #0003; }
   .menu-group { padding: 3px 0; }

@@ -265,6 +265,12 @@
   box-sizing: border-box;
 }
 
+/* Contenedores que reciben el foco solo para atrapar el teclado (diálogos). */
+[role="dialog"][tabindex="-1"]:focus-visible,
+.modal[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

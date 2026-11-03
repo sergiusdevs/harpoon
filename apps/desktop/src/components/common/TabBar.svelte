@@ -38,7 +38,7 @@
   </div>
   {#if hidden.length}<button class="more" aria-label="Más secciones" aria-haspopup="menu" aria-expanded={!!menu} onclick={(event) => { event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); menu = menu ? null : { x: rect.right - 180, y: rect.bottom + 4 }; }} title="Más secciones"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 6 6 6-6 6m8-12 6 6-6 6"/></svg></button>{/if}
 </div>
-{#if menu}<ContextMenu x={menu.x} y={menu.y} items={hidden.map((item) => ({ label: item.label + (item.count ? ` (${item.count})` : ""), action: () => select(item.id) }))} onclose={() => (menu = null)} />{/if}
+{#if menu}<ContextMenu x={menu.x} y={menu.y} items={hidden.map((item) => ({ label: item.label, badge: item.count ? String(item.count) : undefined, action: () => select(item.id) }))} onclose={() => (menu = null)} />{/if}
 <style>
   .tabbar { display: flex; align-items: stretch; width: 100%; min-width: 0; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
   .tabs { flex: 1; min-width: 0; padding: 0 12px; overflow: hidden; border: 0; gap: 0; }
