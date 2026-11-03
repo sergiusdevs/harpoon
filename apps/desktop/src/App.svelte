@@ -27,6 +27,7 @@
   import { devtools } from "./state/devtools.svelte";
   import SecretFindings from "./components/secrets/SecretFindings.svelte";
   import MissingSecrets from "./components/secrets/MissingSecrets.svelte";
+  import ValidationReport from "./components/collection/ValidationReport.svelte";
   import MissingIndicator from "./components/secrets/MissingIndicator.svelte";
 
   let sidebarW = $state(250);
@@ -121,6 +122,8 @@
 <Dialog />
 {#if store.modal === "secret-findings" && store.secretFindings}
   <SecretFindings />
+{:else if store.modal === "validate" && store.collection}
+  <ValidationReport />
 {:else if store.modal === "missing-secrets" && store.collection}
   <MissingSecrets />
 {:else if store.modal === "mock" && store.collection}

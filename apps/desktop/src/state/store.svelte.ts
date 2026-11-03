@@ -52,7 +52,7 @@ class Store {
   runtimeVariables = $state<Record<string, string>>({});
   /** Entrada del historial que se está viendo (null = respuesta en vivo). */
   viewingHistory = $state<HistoryEntry | null>(null);
-  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | "search" | "stream" | "mock" | "secret-findings" | "missing-secrets" | null>(null);
+  modal = $state<"environments" | "settings" | "folder" | "themes" | "curl" | "variables" | "cookies" | "share" | "runner" | "search" | "stream" | "mock" | "secret-findings" | "missing-secrets" | "validate" | null>(null);
   /** Posibles secretos detectados al guardar la solicitud abierta (modal "secret-findings"). */
   secretFindings = $state<{ key: string; findings: SecretFinding[] } | null>(null);
   /** Secretos declarados sin valor en esta máquina para el entorno activo. */

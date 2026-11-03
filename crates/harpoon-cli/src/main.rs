@@ -3,6 +3,7 @@
 mod check;
 mod datafile;
 mod output;
+mod validate;
 
 use std::{path::PathBuf, process::ExitCode};
 
@@ -73,6 +74,18 @@ enum Command {
     },
     /// Lista las solicitudes y entornos de la colección.
     List,
+    /// Revisa la colección sin enviar nada: variables sin definir, URLs, JSON,
+    /// archivos que no existen y secretos sin valor.
+    ///
+    /// Sale con 1 si hay errores (o avisos, con `--strict`).
+    Validate {
+        /// Salida en JSON.
+        #[arg(long)]
+        json: bool,
+        /// Trata los avisos como errores.
+        #[arg(long)]
+        strict: bool,
+    },
     /// Comprueba que no se suben secretos a Git (para pre-commit o CI).
     ///
     /// Sale con 1 si encuentra tokens o contraseñas escritos tal cual en archivos
@@ -246,6 +259,10 @@ async fn run() -> anyhow::Result<ExitCode> {
                 imported.secrets.len()
             );
             Ok(ExitCode::SUCCESS)
+        }
+        Command::Validate { json, strict } => {
+            let col = open(cli.collection.as_deref())?;
+            validate::run(&col, cli.env.as_deref(), json, strict)
         }
         Command::Check { json } => {
             let col = open(cli.collection.as_deref())?;

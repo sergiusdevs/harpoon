@@ -4,6 +4,8 @@ export interface CurlPrepared {
   request: { method: Method; url: string; headers: Record<string, string>; query: Record<string, string>; body?: string | null; multipart?: MultipartPart[] | null; binary_path?: string | null };
   digest: { username: string; password: string } | null;
   settings: Settings;
+  /** Scripts `pre` que fallaron al preparar la solicitud y se omitieron. */
+  warnings?: string[];
 }
 
 /** Genera argumentos para POSIX sin interpolación ni ejecución por la shell. */

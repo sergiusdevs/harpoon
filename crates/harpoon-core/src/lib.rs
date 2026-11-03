@@ -20,6 +20,7 @@ pub mod scan;
 pub mod secrets;
 pub mod share;
 pub mod toml_merge;
+pub mod validate;
 pub mod vars;
 
 pub use collection::Collection;

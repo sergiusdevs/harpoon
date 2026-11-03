@@ -291,6 +291,18 @@ fn scan_request(key: String, request: Request) -> Vec<harpoon_core::scan::Findin
     harpoon_core::scan::scan_request(&key, &request)
 }
 
+/// Problemas de la colección sin enviar nada (`harpoon validate`).
+#[tauri::command]
+fn validate_collection(
+    root: PathBuf,
+    env: Option<String>,
+) -> Result<Vec<harpoon_core::validate::Issue>, String> {
+    Ok(harpoon_core::validate::validate(
+        &load(&root)?,
+        env.as_deref(),
+    ))
+}
+
 /// Secretos declarados sin valor en esta máquina (tras clonar o importar).
 #[tauri::command]
 fn missing_secrets(
@@ -433,6 +445,8 @@ struct CurlPrepared {
     request: Prepared,
     digest: Option<DigestCredentials>,
     settings: harpoon_core::Settings,
+    /// Scripts `pre` que fallaron y se omitieron.
+    warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -449,7 +463,7 @@ fn prepare_curl(
     request: Request,
 ) -> Result<CurlPrepared, String> {
     let col = load(&root)?;
-    let mut prepared =
+    let (mut prepared, warnings) =
         harpoon_script::runner::prepare_for_export(&col, &request, env.as_deref(), &key)
             .map_err(|e| e.to_string())?;
     if !prepared
@@ -482,6 +496,7 @@ fn prepare_curl(
         request: prepared,
         digest,
         settings,
+        warnings,
     })
 }
 
@@ -807,6 +822,7 @@ pub fn run() {
             devtools::devtools_clear,
             save_folder_vars,
             save_folder_settings,
+            validate_collection,
             resolve_url,
             save_environment,
             delete_environment,

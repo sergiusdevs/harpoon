@@ -51,6 +51,8 @@ export interface Api {
   scanRequest(key: string, request: Request): Promise<SecretFinding[]>;
   /** Secretos declarados sin valor en esta máquina. */
   missingSecrets(root: string, env: string | null): Promise<MissingSecret[]>;
+  /** Revisa la colección sin enviar nada (variables, URLs, JSON, archivos…). */
+  validateCollection(root: string, env: string | null): Promise<import("../domain/types").ValidationIssue[]>;
   /** Guarda una variable como secreta (valor local, solo el nombre en Git). */
   setSecret(root: string, scope: SecretScope, name: string, value: string): Promise<Collection>;
   resolveUrl(root: string, key: string, env: string | null, url: string): Promise<string>;
@@ -133,6 +135,7 @@ async function tauriApi(): Promise<Api> {
     scanSecrets: (root) => invoke<SecretFinding[]>("scan_secrets", { root }),
     scanRequest: (key, request) => invoke<SecretFinding[]>("scan_request", { key, request }),
     missingSecrets: (root, env) => invoke<MissingSecret[]>("missing_secrets", { root, env }),
+    validateCollection: (root, env) => invoke("validate_collection", { root, env }),
     setSecret: (root, scope, name, value) => col("set_secret", { root, scope, name, value }),
     resolveUrl: (root, key, env, url) => invoke<string>("resolve_url", { root, key, env, url }),
     saveEnvironment: (root, name, env) => col("save_environment", { root, name, env }),
@@ -345,6 +348,10 @@ function mockApi(): Api {
     // Versión reducida del detector de Rust (harpoon_core::scan), solo para la demo.
     scanSecrets: async () => Object.entries(col.requests).flatMap(([key, request]) => mockScan(key, request)),
     scanRequest: async (key, request) => mockScan(key, request),
+    validateCollection: async () => [
+      { severity: "error", file: "requests/pets/create.toml", request: "pets/create", location: "header X-Trace", message: "la variable `{{trace_id}}` no está definida" },
+      { severity: "warning", file: "requests/store/inventory.toml", request: "store/inventory", location: "body", message: "JSON no válido: expected value at line 1 column 1" },
+    ],
     missingSecrets: async (_root, env) => {
       const out: MissingSecret[] = [];
       const empty = (vars: Record<string, string>, name: string) => !vars[name];

@@ -176,3 +176,21 @@ async fn la_carpeta_aporta_auth_cabeceras_y_scripts_en_orden() {
     assert!(exec.passed, "{:?}", exec.tests);
     assert_eq!(exec.tests.len(), 1);
 }
+
+#[test]
+fn exportar_no_falla_si_un_script_pre_usa_apis_del_navegador() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut col = Collection::init(tmp.path(), "export").unwrap();
+    col.meta.default_environment = None;
+    let mut req = Request::new("x", Method::Get, "https://api.test/x");
+    req.scripts.pre = "document.title = 'x';".into();
+    req.headers
+        .insert("Accept".into(), "application/json".into());
+
+    let (prepared, warnings) =
+        harpoon_script::runner::prepare_for_export(&col, &req, None, "x").unwrap();
+    assert_eq!(prepared.url, "https://api.test/x");
+    assert_eq!(prepared.headers["Accept"], "application/json");
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0].contains("document"), "{warnings:?}");
+}

@@ -88,6 +88,7 @@ test = 'test("devuelve un id", () => expect(harpoon.res.json()).to.have.property
 ```sh
 harpoon run --env staging --bail --junit informe.xml   # se detiene al primer fallo
 harpoon run --data casos.csv                           # una ejecución por fila
+harpoon validate                                       # variables sin definir, URLs, JSON, archivos…
 harpoon check                                          # busca secretos en archivos versionados
 ```
 

@@ -118,12 +118,15 @@ fn apply_script_request(req: &mut Request, s: ScriptRequest) {
 }
 
 /// Prepara una solicitud para exportarla, ejecutando scripts previos sin persistir variables ni enviar tráfico.
+///
+/// Un script `pre` que falla (p. ej. usa APIs del navegador como `document`) no
+/// impide exportar: se omiten sus cambios y se devuelve un aviso.
 pub fn prepare_for_export(
     collection: &Collection,
     request: &Request,
     environment: Option<&str>,
     key: &str,
-) -> Result<Prepared> {
+) -> Result<(Prepared, Vec<String>)> {
     if request.request_type().is_stream() {
         return Err(Error::InteractiveRequest);
     }
@@ -133,16 +136,23 @@ pub fn prepare_for_export(
     let mut req = collection.with_folder_inheritance(key, request);
     let engine = Engine::new()?;
     let mut script_req = to_script_request(&req);
+    let mut warnings = Vec::new();
     for (phase, script) in phases(collection, key, request, Phase::Pre) {
-        let out = engine.run(&phase, script, Some(&script_req), None, &vars, &env)?;
-        if let Some(r) = out.req {
-            script_req = r;
+        match engine.run(&phase, script, Some(&script_req), None, &vars, &env) {
+            Ok(out) => {
+                if let Some(r) = out.req {
+                    script_req = r;
+                }
+                vars = out.vars;
+            }
+            Err(e) => warnings.push(format!(
+                "{e}. El código se genera sin los cambios de ese script."
+            )),
         }
-        vars = out.vars;
     }
     apply_script_request(&mut req, script_req);
     let scope = base_scope.with_layer(vars);
-    Ok(harpoon_http::prepare(collection, &req, &scope)?)
+    Ok((harpoon_http::prepare(collection, &req, &scope)?, warnings))
 }
 
 /// Ejecuta una solicitud con todos sus scripts. `vars` son las variables de

@@ -178,6 +178,15 @@ export function emptyFolderConfig(): FolderConfig {
   return { vars: {}, secrets: [], headers: {}, auth: { type: "inherit" }, scripts: { pre: "", post: "", test: "" } };
 }
 
+/** Problema detectado por `harpoon validate`. */
+export interface ValidationIssue {
+  severity: "error" | "warning";
+  file: string;
+  request?: string;
+  location: string;
+  message: string;
+}
+
 /** Posible secreto en un archivo versionado (lo detecta `harpoon_core::scan`). */
 export interface SecretFinding {
   file: string;

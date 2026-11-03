@@ -34,7 +34,7 @@ Harpoon recorta y reordena para ser **totalmente offline**:
   (`{{$uuid}}`, `{{$timestamp}}`, `{{$randomInt}}`).
 - Secretos: `*.secrets.toml`, `HARPOON_<VAR>`, llavero del SO (`keyring`).
 - ✅ Escritura del formato preservando comentarios y orden (`toml_edit`).
-- `harpoon validate` (valida la colección sin enviar nada).
+- ✅ `harpoon validate` (valida la colección sin enviar nada; también en la app).
 
 ## Fase 2 — REST + CLI para CI ✅
 

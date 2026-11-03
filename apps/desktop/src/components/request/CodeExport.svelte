@@ -57,6 +57,7 @@
         <button role="tab" aria-selected={language === l.id} class:on={language === l.id} onclick={() => choose(l.id)}>{l.name}</button>
       {/each}
     </div>
+    {#each prepared?.warnings ?? [] as warning}<p class="warning" role="status">⚠ {warning}</p>{/each}
     <div class="code">
       {#if result.error}<p class="error" role="alert">{result.error}</p>
       {:else}<CodeEditor value={result.code} readonly wrap language={language === "fetch" || language === "axios" ? "javascript" : "text"} label={`Código ${info.name}`} />{/if}
@@ -75,4 +76,5 @@
   .code { height: 340px; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; background: var(--bg-panel); }
   .hint, .error { margin: 10px 0 0; font-size: 12px; }
   .error { color: var(--err); padding: 12px; margin: 0; }
+  .warning { margin: 0 0 10px; padding: 8px 10px; font-size: 12px; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 </style>
