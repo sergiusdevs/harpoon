@@ -7,6 +7,7 @@ import { requestFailure, type RequestFailure } from "../domain/requestFailure";
 import { streams } from "./streams.svelte";
 import { api, folderChain } from "../services/api";
 import { resolveTheme, themes, type Theme } from "../domain/themes";
+import { variableSuggestions, type VariableSuggestion } from "../domain/variables";
 import { interfaceFonts, editorFonts, type InterfaceFont, type EditorFont } from "../domain/fonts";
 import { convertRequestType, newTypedRequest, requestType, type RequestType, type Collection, type CollectionMeta, type Environment, type Exchange, type FolderConfig, type HistoryEntry, type Method, type MissingSecret, type Request, type SecretFinding, type SecretScope } from "../domain/types";
 import { applySecret } from "../domain/secrets";
@@ -60,6 +61,20 @@ class Store {
   dismissedMissing = $state<string | null>(null);
   editingFolder = $state("");
   runFolder = $state("");
+
+  /** Variables disponibles para una solicitud con esa clave (o en esa carpeta, con `key = "carpeta/x"`). */
+  variablesFor(key: string): VariableSuggestion[] {
+    const col = this.collection;
+    if (!col) return [];
+    const layers = [{ source: "Colección", names: Object.keys(col.meta.vars) }];
+    for (const folder of folderChain(key)) {
+      layers.push({ source: `Carpeta · ${folder}`, names: Object.keys(col.folder_configs[folder]?.vars ?? {}) });
+    }
+    const env = this.env ?? col.meta.default_environment;
+    if (env) layers.push({ source: `Entorno · ${env}`, names: Object.keys(col.environments[env]?.vars ?? {}) });
+    layers.push({ source: "Ejecución", names: Object.keys(this.runtimeVariables) });
+    return variableSuggestions(layers);
+  }
 
   openRunner(folder = "") {
     this.runFolder = folder;

@@ -20,7 +20,6 @@
   import ResponsePane from "../response/ResponsePane.svelte";
   import Splitter from "../common/Splitter.svelte";
   import { folderChain } from "../../domain/paths";
-  import { variableSuggestions } from "../../domain/variables";
   import { parseCurl } from "../../domain/curl";
   import CurlExport from "./CurlExport.svelte";
   import MultipartEditor from "./MultipartEditor.svelte";
@@ -63,18 +62,7 @@
     void store.selected;
     tab = type === "graphql" ? "body" : "params";
   });
-  const variables = $derived.by(() => {
-    const col = store.collection;
-    if (!col) return [];
-    const layers = [{ source: "Colección", names: Object.keys(col.meta.vars) }];
-    for (const folder of folderChain(store.selected ?? "")) {
-      layers.push({ source: `Carpeta · ${folder}`, names: Object.keys(col.folder_configs[folder]?.vars ?? {}) });
-    }
-    const env = store.env ?? col.meta.default_environment;
-    if (env) layers.push({ source: `Entorno · ${env}`, names: Object.keys(col.environments[env]?.vars ?? {}) });
-    layers.push({ source: "Ejecución", names: Object.keys(store.runtimeVariables) });
-    return variableSuggestions(layers);
-  });
+  const variables = $derived(store.variablesFor(store.selected ?? ""));
   let resolvedUrl = $state("");
   let urlError = $state("");
   $effect(() => {

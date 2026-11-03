@@ -84,7 +84,7 @@
     border-radius: 8px;
     padding: 4px;
     box-shadow: var(--shadow-pop);
-    animation: pop-in 140ms cubic-bezier(.2, .7, .3, 1) both;
+    animation: pop-in 140ms cubic-bezier(.2, .7, .3, 1) backwards;
     transform-origin: top left;
     display: flex;
     flex-direction: column;

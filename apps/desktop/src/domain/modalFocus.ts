@@ -24,6 +24,8 @@ export function modalFocus(node: HTMLElement, initial: Options) {
   queueMicrotask(() => { if (layers.at(-1) === layer) (focusable(node)[0] ?? node).focus(); });
   const keydown = (event: KeyboardEvent) => {
     if (layers.at(-1) !== layer) return;
+    // Escape cierra primero un desplegable abierto dentro del diálogo (sugerencias, combobox).
+    if (event.key === "Escape" && (event.target as HTMLElement | null)?.closest?.('[aria-expanded="true"]')) return;
     if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); options.onEscape(); }
     if (event.key !== "Tab") return;
     const elements = focusable(node), first = elements[0], last = elements.at(-1);

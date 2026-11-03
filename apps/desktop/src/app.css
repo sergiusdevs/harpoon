@@ -658,7 +658,7 @@ input {
 }
 
 .fade-in {
-  animation: fade-in 160ms ease both;
+  animation: fade-in 160ms ease backwards;
 }
 
 @keyframes pulse {
@@ -882,7 +882,7 @@ select:focus {
   }
 }
 .pop-in {
-  animation: pop-in 160ms cubic-bezier(.2, .7, .3, 1) both;
+  animation: pop-in 160ms cubic-bezier(.2, .7, .3, 1) backwards;
   transform-origin: top right;
 }
 

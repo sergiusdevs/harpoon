@@ -35,7 +35,7 @@
     justify-content: center;
     z-index: 45;
     backdrop-filter: blur(3px);
-    animation: backdrop-in 160ms ease both;
+    animation: backdrop-in 160ms ease backwards;
   }
   @keyframes backdrop-in { from { opacity: 0; } }
   @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
@@ -46,7 +46,7 @@
     border: 1px solid var(--border-strong);
     border-radius: 10px;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    animation: modal-in 200ms cubic-bezier(.2, .7, .3, 1) both;
+    animation: modal-in 200ms cubic-bezier(.2, .7, .3, 1) backwards;
     display: flex;
     flex-direction: column;
     overflow: hidden;
