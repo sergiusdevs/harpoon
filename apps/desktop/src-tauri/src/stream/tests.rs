@@ -147,7 +147,7 @@ async fn digest_responde_al_reto_del_handshake() {
         2,
         "un intento sin credenciales y otro con Digest"
     );
-    assert!(seen[0].is_empty());
+    assert_eq!(seen[0], "");
 }
 
 #[tokio::test]
