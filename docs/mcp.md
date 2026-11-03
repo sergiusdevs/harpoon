@@ -9,7 +9,12 @@ el asistente que lo lanza, sin abrir puertos ni conectarse a nada.
 
 ## Configuración
 
-Sustituye la ruta por la de tu colección (o ejecuta el asistente desde ella y
+**Desde la app:** pie de la barra lateral → **Asistentes IA (MCP)**. Muestra si la
+CLI está instalada y si Harpoon ya está registrado en Claude Code o Codex, lo
+registra con un botón para la colección abierta (con o sin escritura) y da la
+configuración lista para copiar en el resto de asistentes.
+
+**A mano:** sustituye la ruta por la de tu colección (o ejecuta el asistente desde ella y
 omite `-C`). Con `--env` eliges el entorno por defecto.
 
 **Claude Code**

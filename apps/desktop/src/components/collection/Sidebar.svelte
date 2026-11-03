@@ -194,6 +194,7 @@
     { label: "Nueva carpeta", icon: "folder-plus", action: () => store.newFolder("") },
     { label: "Ejecutar", icon: "play", action: () => store.openRunner() },
     { label: "Validar colección", icon: "vars", action: () => { store.modal = "validate"; } },
+    { label: "Asistentes IA (MCP)", icon: "share", action: () => { store.modal = "mcp"; } },
     { label: "Recargar desde disco", icon: "collapse", action: () => void store.refreshFromDisk() },
     { label: "Importar desde cURL", icon: "terminal", action: () => store.importCurl() },
     { label: "Importar / exportar", icon: "share", action: () => { store.modal = "share"; } },
@@ -354,9 +355,9 @@
     <div class="col-row">
       <span class="collection-icon"><Icon name="folder-open" size={16} /></span>
       <div class="col-name" title={`${store.collection.root} · ${Object.keys(store.collection.requests).length} solicitudes`}>{store.collection.meta.name}</div>
-      <button class="btn icon head-btn" class:on={searchOpen} title="Buscar solicitudes (⌘K)" aria-label="Buscar solicitudes" aria-pressed={searchOpen} onclick={toggleSearch}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></button>
+      <button class="btn icon head-btn" class:on={searchOpen} title="Buscar solicitudes (⌘K)" aria-label="Buscar solicitudes" aria-pressed={searchOpen} onclick={toggleSearch}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></button>
       <button class="btn icon head-btn" class:open={menu?.owner === ":add"} title="Nuevo (⌘N · ⇧⌘N)" aria-label="Nueva solicitud o carpeta" aria-haspopup="menu" onclick={(e) => openMenuAt(e, addMenu(), ":add")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
-      <button class="btn icon head-btn" class:open={menu?.owner === ":root"} title="Más acciones" aria-label="Más acciones de la colección" aria-haspopup="menu" onclick={(e) => openMenuAt(e, headerMenu(), ":root")}><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+      <button class="btn icon head-btn" class:open={menu?.owner === ":root"} title="Más acciones" aria-label="Más acciones de la colección" aria-haspopup="menu" onclick={(e) => openMenuAt(e, headerMenu(), ":root")}><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5.5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="18.5" r="1.7"/></svg></button>
     </div>
     {#if searchOpen}
       <div class="search">
@@ -394,6 +395,7 @@
   {/if}
 
     <nav class="app-actions" aria-label="Accesos de la aplicación">
+      {#if store.collection}<button class="btn app-action" onclick={() => (store.modal = "mcp")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.5L12 15l-1.8-4.5L5.5 9l4.7-1.4z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg><span>Asistentes IA (MCP)</span></button>{/if}
       {#if store.collection}<button class="btn app-action" onclick={() => (store.modal = "mock")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6h1M7 17h1"/></svg><span>Servidor mock</span></button>{/if}
       {#if streams.sessions.length}
         <button class="btn app-action" onclick={() => (store.modal = "stream")}>
@@ -532,9 +534,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .head-btn { width: 26px; height: 26px; padding: 0; color: var(--text-muted); }
-  .head-btn:hover, .head-btn.open { color: var(--text); }
-  .head-btn.on { color: var(--accent); }
+  .head-btn { display: inline-grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border-radius: 7px; color: var(--text-muted); transition: background var(--t), color var(--t); }
+  .head-btn:hover, .head-btn.open { color: var(--text); background: var(--bg-hover); }
+  .head-btn.on { color: var(--accent-strong); background: var(--accent-soft); }
   .search {
     position: relative;
     display: flex;

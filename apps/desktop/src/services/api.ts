@@ -14,6 +14,8 @@ import type { StreamEvent } from "../domain/streamSessions";
 export interface MockRoute { enabled: boolean; method: import("../domain/types").Method; path: string; status: number; headers: Record<string, string>; body: string }
 export interface MockConfig { routes: MockRoute[] }
 export interface MockStatus { root: string; address: string }
+export interface McpRegistration { collection: string | null; allow_write: boolean; command: string }
+export interface McpStatus { cli: string | null; claude: McpRegistration | null; codex: McpRegistration | null; claude_config: string; codex_config: string }
 export interface GitStatus { available: boolean; initialized: boolean; branch: string | null }
 
 export interface Api {
@@ -31,6 +33,10 @@ export interface Api {
   revealFolder(root: string, folder: string): Promise<void>;
   /** Abre una terminal del sistema en la carpeta. */
   openTerminal(root: string, folder: string): Promise<void>;
+  /** CLI instalada y registro de `harpoon mcp` en Claude Code y Codex. */
+  mcpStatus(): Promise<McpStatus>;
+  registerMcp(root: string, assistant: "claude" | "codex", allowWrite: boolean): Promise<McpStatus>;
+  unregisterMcp(assistant: "claude" | "codex"): Promise<McpStatus>;
   /** Si la colección está en un repositorio Git y en qué rama. */
   gitStatus(root: string): Promise<GitStatus>;
   /** `git init` en la raíz de la colección. */
@@ -116,6 +122,9 @@ async function tauriApi(): Promise<Api> {
     deleteFolder: (root, folder) => col("delete_folder", { root, folder }),
     revealFolder: (root, folder) => invoke("reveal_folder", { root, folder }),
     openTerminal: (root, folder) => invoke("open_terminal", { root, folder }),
+    mcpStatus: () => invoke<McpStatus>("mcp_status"),
+    registerMcp: (root, assistant, allowWrite) => invoke<McpStatus>("register_mcp", { root, assistant, allowWrite }),
+    unregisterMcp: (assistant) => invoke<McpStatus>("unregister_mcp", { assistant }),
     gitStatus: (root) => invoke<GitStatus>("git_status", { root }),
     gitInit: (root) => invoke<GitStatus>("git_init", { root }),
     listFolders: (root) => invoke<string[]>("list_folders", { root }),
@@ -267,6 +276,7 @@ function mockApi(): Api {
   };
   const folders = new Set<string>(["pets", "store", "user", "admin", "docs"]);
   let git: GitStatus = { available: true, initialized: false, branch: null };
+  const mcp: McpStatus = { cli: "/Users/demo/.cargo/bin/harpoon", claude: null, codex: null, claude_config: "~/.claude.json", codex_config: "~/.codex/config.toml" };
   let runtime: Record<string, string> = { token: "demo-token" };
   let mockCookies: StoredCookie[] = [];
   const hist: Record<string, HistoryEntry[]> = {};
@@ -335,6 +345,9 @@ function mockApi(): Api {
     listFolders: async () => [...folders].sort(),
     revealFolder: async () => { throw new Error("Solo disponible en la app de escritorio"); },
     openTerminal: async () => { throw new Error("Solo disponible en la app de escritorio"); },
+    mcpStatus: async () => structuredClone(mcp),
+    registerMcp: async (root, assistant, allowWrite) => { mcp[assistant] = { collection: root, allow_write: allowWrite, command: mcp.cli! }; return structuredClone(mcp); },
+    unregisterMcp: async (assistant) => { mcp[assistant] = null; return structuredClone(mcp); },
     gitStatus: async () => ({ ...git }),
     gitInit: async () => { git = { available: true, initialized: true, branch: "main" }; return { ...git }; },
     saveFolderVars: async (_root, folder, vars, secrets) => {

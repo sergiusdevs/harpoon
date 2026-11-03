@@ -5,6 +5,7 @@
 // Los comandos de Tauri reciben sus argumentos por valor.
 #![allow(clippy::needless_pass_by_value)]
 
+mod assistants;
 mod devtools;
 mod git;
 mod http_requests;
@@ -828,6 +829,9 @@ pub fn run() {
             scan_request,
             missing_secrets,
             set_secret,
+            assistants::mcp_status,
+            assistants::register_mcp,
+            assistants::unregister_mcp,
             git::git_status,
             git::git_init,
             devtools::devtools_snapshot,

@@ -32,6 +32,9 @@ como `‹oculto›`; Harpoon lo garantiza antes de responder. Sin puertos ni red
 Con `--allow-write` también puede crear carpetas y solicitudes, rechazando cualquier
 credencial escrita tal cual: por ejemplo, registrar una API entera desde el chat.
 
+En la app, **Asistentes IA (MCP)** (pie de la barra lateral) lo registra en Claude Code o
+Codex con un botón. A mano:
+
 ```sh
 claude mcp add harpoon -- harpoon mcp -C ~/mi-api
 ```

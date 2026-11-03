@@ -21,6 +21,7 @@ harpoon-http.workspace = true
 harpoon-script.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml_edit.workspace = true
 indexmap.workspace = true
 tauri = { version = "2.12", features = [] }
 tauri-plugin-dialog = "2.8"
