@@ -40,7 +40,7 @@ args = ["mcp", "-C", "/ruta/a/mi-api"]
 
 ## Herramientas
 
-Todas son de solo lectura y leen la colección del disco en cada llamada.
+Leen la colección del disco en cada llamada. Por defecto son de solo lectura.
 
 | Herramienta | Qué devuelve |
 |---|---|
@@ -50,9 +50,29 @@ Todas son de solo lectura y leen la colección del disco en cada llamada.
 | `resolve_url` | URL final en un entorno, con las secretas como `{{nombre}}` |
 | `validate` | Lo mismo que `harpoon validate`: variables sin definir, URLs, JSON, archivos… |
 
-Para crear o modificar solicitudes, el asistente edita los archivos `.toml` de la
-colección directamente (están documentados en [format.md](format.md)); Harpoon
-conserva sus comentarios y formato al guardar.
+### Escritura (`--allow-write`)
+
+Con `harpoon mcp --allow-write` el asistente también puede crear:
+
+| Herramienta | Qué hace |
+|---|---|
+| `save_folder` | Crea una carpeta (y sus padres) y añade variables y cabeceras que heredan sus solicitudes |
+| `save_request` | Crea una solicitud: método, URL con `{{variables}}`, query, cabeceras, cuerpo (JSON, texto, XML, GraphQL, formulario), docs y status esperado. No sobrescribe salvo `overwrite: true` |
+
+Ambas **rechazan credenciales escritas tal cual** (`Authorization: Bearer abc…`,
+`api_key=…`, tokens con formato conocido) y piden usar `{{variable}}`, que luego
+marcas como secreta en Harpoon. Las plantillas como `Bearer {{token}}` sí se aceptan.
+Lo que se guarda pasa por el mismo formato que la app: conserva comentarios y es
+atómico.
+
+```sh
+claude mcp add harpoon -- harpoon mcp --allow-write -C ~/mi-api
+```
+
+Ejemplo real: con solo dos herramientas, `save_folder` y `save_request`, un asistente
+registra la API pública de Rick and Morty (14 solicitudes en `rick-and-morty/`:
+personajes, ubicaciones, episodios y GraphQL, con la URL base en la carpeta) y
+`harpoon run rick-and-morty` las pasa todas.
 
 ## Qué nunca sale
 
@@ -73,11 +93,12 @@ Harpoon lo garantiza al generar cada respuesta, no confía en el asistente:
 
 - «¿Qué endpoints de usuarios tiene la API y qué cabeceras necesitan?»
 - «Genera un cliente TypeScript para las solicitudes de `orders/`.»
-- «Añade una solicitud `DELETE /users/{id}` en `users/` siguiendo el estilo de las demás.»
+- «Registra en Harpoon la API de Rick and Morty, organizada por recursos.» (con `--allow-write`)
+- «Añade una solicitud `DELETE /users/{id}` en `users/` siguiendo el estilo de las demás.» (con `--allow-write`)
 - «¿Por qué falla `harpoon validate` en staging?»
 
 ## Próximamente
 
 - `--allow-send`: enviar solicitudes desde el asistente (los secretos se resuelven
   dentro de Harpoon y la respuesta llega enmascarada).
-- `--allow-write`: crear y editar solicitudes con el detector de secretos activo.
+- Editar auth y scripts por MCP (hoy se hace en la app).

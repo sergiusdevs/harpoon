@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use harpoon_core::{Collection, redact, validate};
+use indexmap::IndexMap;
 use serde_json::{Value, json};
 
 /// Versiones del protocolo que entendemos (la primera es la preferida).
@@ -19,18 +20,23 @@ const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const INSTRUCTIONS: &str = "Colección de APIs de Harpoon (archivos TOML versionados con Git). \
 Usa list_requests para ver qué hay, get_request para el detalle de una solicitud y resolve_url \
 para la URL final en un entorno. Los secretos nunca se muestran: aparecen como {{variable}} o ‹oculto›. \
-Para crear o editar solicitudes, edita los archivos .toml de la colección (formato en docs/format.md).";
+Si el servidor tiene escritura activada (--allow-write), crea carpetas con save_folder y solicitudes \
+con save_request; pon la URL base en las variables de la carpeta y usa {{variable}} en las URLs. \
+Nunca escribas credenciales: usa {{variable}} y pide al usuario que la marque como secreta en Harpoon.";
 
 pub struct Server {
     root: PathBuf,
     environment: Option<String>,
+    /// Activa `save_folder` y `save_request` (`harpoon mcp --allow-write`).
+    allow_write: bool,
 }
 
 impl Server {
-    pub fn new(root: &Path, environment: Option<String>) -> Self {
+    pub fn new(root: &Path, environment: Option<String>, allow_write: bool) -> Self {
         Self {
             root: root.to_path_buf(),
             environment,
+            allow_write,
         }
     }
 
@@ -76,7 +82,7 @@ impl Server {
                 )
             }
             "ping" => ok(&id, json!({})),
-            "tools/list" => ok(&id, json!({"tools": tools()})),
+            "tools/list" => ok(&id, json!({"tools": tools(self.allow_write)})),
             "tools/call" => {
                 let name = params["name"].as_str().unwrap_or_default();
                 let args = params
@@ -177,9 +183,115 @@ impl Server {
                 let issues = validate::validate(&c, env.as_deref());
                 Ok(json!({"count": issues.len(), "issues": issues}))
             }
+            "save_folder" | "save_request" if !self.allow_write => {
+                anyhow::bail!(
+                    "escritura desactivada: arranca el servidor con `harpoon mcp --allow-write`"
+                )
+            }
+            "save_folder" => save_folder(c, args),
+            "save_request" => save_request(c, args),
             other => anyhow::bail!("herramienta desconocida: {other}"),
         }
     }
+}
+
+/// Rechaza valores que parecen credenciales: se guardarían en Git.
+fn refuse_secrets(pairs: &IndexMap<String, String>, what: &str) -> anyhow::Result<()> {
+    for (name, value) in pairs {
+        if redact::looks_secret(name, value) {
+            anyhow::bail!(
+                "{what} `{name}` parece un secreto: usa {{{{{}}}}} y pide al usuario que la marque como secreta en Harpoon",
+                name.to_lowercase().replace('-', "_")
+            );
+        }
+    }
+    Ok(())
+}
+
+fn map_arg(args: &Value, name: &str) -> anyhow::Result<IndexMap<String, String>> {
+    match &args[name] {
+        Value::Null => Ok(IndexMap::new()),
+        v => serde_json::from_value(v.clone())
+            .with_context(|| format!("`{name}` debe ser un objeto de textos")),
+    }
+}
+
+fn save_folder(mut c: Collection, args: &Value) -> anyhow::Result<Value> {
+    let folder = required(args, "folder")?.trim_matches('/').to_owned();
+    let vars = map_arg(args, "vars")?;
+    let headers = map_arg(args, "headers")?;
+    refuse_secrets(&vars, "la variable")?;
+    refuse_secrets(&headers, "la cabecera")?;
+    c.create_folder(&folder)?;
+    let current = c.folder_configs.get(&folder).cloned().unwrap_or_default();
+    if !vars.is_empty() {
+        let mut merged = current.vars.clone();
+        merged.extend(vars);
+        c.save_folder_config(&folder, merged, current.secrets.clone())?;
+    }
+    if !headers.is_empty() {
+        let mut merged = current.headers.clone();
+        merged.extend(headers);
+        c.save_folder_settings(
+            &folder,
+            merged,
+            current.auth.clone(),
+            current.scripts.clone(),
+        )?;
+    }
+    let c = Collection::load(&c.root)?;
+    Ok(json!({
+        "saved": format!("requests/{folder}/folder.toml"),
+        "vars": c.folder_configs.get(&folder).map(|f| redact::vars(&f.vars, &f.secrets)),
+    }))
+}
+
+fn save_request(mut c: Collection, args: &Value) -> anyhow::Result<Value> {
+    let key = required(args, "key")?.trim_matches('/').to_owned();
+    if c.requests.contains_key(&key) && args["overwrite"] != true {
+        anyhow::bail!("ya existe `{key}`; pasa overwrite: true para reemplazarla");
+    }
+    let method: harpoon_core::Method =
+        serde_json::from_value(json!(required(args, "method")?.to_uppercase()))
+            .context("método no válido (GET, POST, PUT, PATCH, DELETE, HEAD u OPTIONS)")?;
+    let mut req = harpoon_core::Request::new(
+        args["name"].as_str().unwrap_or(&key),
+        method,
+        required(args, "url")?,
+    );
+    req.query = map_arg(args, "query")?;
+    req.headers = map_arg(args, "headers")?;
+    if !args["body"].is_null() {
+        req.body = serde_json::from_value(args["body"].clone())
+            .context("`body` no válido: usa {\"type\": \"json\", \"json\": \"…\"} (o text, xml, graphql, form)")?;
+    }
+    args["docs"]
+        .as_str()
+        .unwrap_or_default()
+        .clone_into(&mut req.docs);
+    req.expect.status = args["expect_status"]
+        .as_u64()
+        .and_then(|s| u16::try_from(s).ok());
+    refuse_secrets(&req.headers, "la cabecera")?;
+    refuse_secrets(&req.query, "el parámetro")?;
+    if let Some(f) = harpoon_core::scan::scan_request(&key, &req).first() {
+        anyhow::bail!(
+            "{} parece contener un secreto ({}): usa {{{{{}}}}}",
+            f.location,
+            f.kind,
+            f.suggestion
+        );
+    }
+    if let Some((parent, _)) = key.rsplit_once('/') {
+        c.create_folder(parent)?;
+    }
+    c.save_request(&key, req)?;
+    let c = Collection::load(&c.root)?;
+    Ok(json!({
+        "saved": format!("requests/{key}.toml"),
+        "request": redact::request(&c, &key, &c.requests[&key]),
+        "resolved_url": redact::resolved_url(&c, &key, None).ok(),
+    }))
 }
 
 fn required<'a>(args: &'a Value, name: &str) -> anyhow::Result<&'a str> {
@@ -201,10 +313,12 @@ fn error(id: &Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
 }
 
-fn tools() -> Value {
+fn tools(allow_write: bool) -> Value {
     let read_only = json!({"readOnlyHint": true, "openWorldHint": false});
+    let write = json!({"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false});
+    let pairs = json!({"type": "object", "additionalProperties": {"type": "string"}});
     let env = json!({"type": "string", "description": "Entorno (por defecto, el de la colección o el de --env)"});
-    json!([
+    let mut list = json!([
         {
             "name": "list_requests",
             "title": "Listar solicitudes",
@@ -248,7 +362,41 @@ fn tools() -> Value {
             "inputSchema": {"type": "object", "properties": {"environment": env}},
             "annotations": read_only,
         }
-    ])
+    ]);
+    if allow_write {
+        list.as_array_mut().expect("lista").extend([
+            json!({
+                "name": "save_folder",
+                "title": "Crear o completar una carpeta",
+                "description": "Crea la carpeta (y sus padres) y añade variables y cabeceras que heredan sus solicitudes. Pon aquí la URL base (p. ej. vars: {\"base_url\": \"https://…\"}). Rechaza valores que parezcan secretos.",
+                "inputSchema": {"type": "object", "properties": {
+                    "folder": {"type": "string", "description": "Ruta de la carpeta, p. ej. `rick-and-morty/characters`"},
+                    "vars": pairs.clone(),
+                    "headers": pairs.clone()
+                }, "required": ["folder"]},
+                "annotations": write.clone(),
+            }),
+            json!({
+                "name": "save_request",
+                "title": "Crear una solicitud",
+                "description": "Crea una solicitud HTTP en la colección. Usa {{variables}} en la URL. No sobrescribe salvo overwrite: true. Rechaza credenciales escritas tal cual.",
+                "inputSchema": {"type": "object", "properties": {
+                    "key": {"type": "string", "description": "Clave = ruta del archivo sin .toml, p. ej. `rick-and-morty/characters/list`"},
+                    "name": {"type": "string", "description": "Nombre visible"},
+                    "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]},
+                    "url": {"type": "string", "description": "URL, p. ej. `{{base_url}}/character/{{character_id}}`"},
+                    "query": pairs.clone(),
+                    "headers": pairs.clone(),
+                    "body": {"type": "object", "description": "Cuerpo: {\"type\": \"json\", \"json\": \"{…}\"}, {\"type\": \"text\", \"text\": …}, {\"type\": \"graphql\", \"query\": …, \"variables\": \"{}\", \"operation_name\": \"\"} o {\"type\": \"form\", \"fields\": {…}}"},
+                    "docs": {"type": "string", "description": "Documentación en Markdown"},
+                    "expect_status": {"type": "integer", "description": "Status esperado (aserción)"},
+                    "overwrite": {"type": "boolean", "description": "Reemplazar si ya existe"}
+                }, "required": ["key", "method", "url"]},
+                "annotations": write,
+            }),
+        ]);
+    }
+    list
 }
 
 #[cfg(test)]
@@ -269,7 +417,7 @@ mod tests {
         req.headers
             .insert("Authorization".into(), "Bearer literal-123".into());
         c.save_request("users/list", req).unwrap();
-        let s = Server::new(temp.path(), None);
+        let s = Server::new(temp.path(), None, false);
         (temp, s)
     }
 
@@ -355,5 +503,102 @@ mod tests {
                 .unwrap()
                 .contains("nope")
         );
+    }
+
+    fn call_raw(s: &Server, name: &str, args: &Value) -> Value {
+        let line = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}});
+        s.handle_line(&line.to_string()).unwrap()["result"].clone()
+    }
+
+    #[test]
+    fn escritura_solo_con_allow_write() {
+        let (temp, read_only) = server();
+        let names = |s: &Server| -> Vec<String> {
+            let list = s
+                .handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#)
+                .unwrap();
+            list["result"]["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|t| t["name"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        assert!(!names(&read_only).contains(&"save_request".to_owned()));
+        let refused = call_raw(&read_only, "save_folder", &json!({"folder": "x"}));
+        assert_eq!(refused["isError"], true);
+        let writer = Server::new(temp.path(), None, true);
+        assert!(names(&writer).contains(&"save_request".to_owned()));
+    }
+
+    #[test]
+    fn crea_carpetas_y_solicitudes_sin_secretos() {
+        let (temp, _) = server();
+        let s = Server::new(temp.path(), None, true);
+        let folder = call_raw(
+            &s,
+            "save_folder",
+            &json!({"folder": "rm", "vars": {"rm_url": "https://api.test"}, "headers": {"Accept": "application/json"}}),
+        );
+        assert_eq!(folder["isError"], false, "{folder}");
+        let saved = call_raw(
+            &s,
+            "save_request",
+            &json!({
+                "key": "rm/characters/get", "name": "Personaje", "method": "get",
+                "url": "{{rm_url}}/character/{{id}}", "query": {"page": "1"}, "expect_status": 200,
+                "docs": "Un personaje por id"
+            }),
+        );
+        assert_eq!(saved["isError"], false, "{saved}");
+        let req = &saved["structuredContent"]["request"];
+        assert_eq!(req["method"], "GET");
+        assert_eq!(
+            req["headers"]["Accept"], "application/json",
+            "hereda de la carpeta"
+        );
+        assert_eq!(
+            saved["structuredContent"]["resolved_url"],
+            "https://api.test/character/{{id}}?page=1"
+        );
+
+        let col = Collection::load(temp.path()).unwrap();
+        assert_eq!(col.requests["rm/characters/get"].expect.status, Some(200));
+        assert_eq!(col.folder_configs["rm"].vars["rm_url"], "https://api.test");
+
+        let again = call_raw(
+            &s,
+            "save_request",
+            &json!({"key": "rm/characters/get", "method": "GET", "url": "x"}),
+        );
+        assert_eq!(again["isError"], true, "no sobrescribe sin overwrite");
+
+        for args in [
+            json!({"key": "rm/leak", "method": "GET", "url": "https://a.test", "headers": {"Authorization": "Bearer abc123"}}),
+            json!({"key": "rm/leak", "method": "GET", "url": "https://a.test", "query": {"api_key": "s3cr3t"}}),
+            json!({"key": "rm/leak", "method": "GET", "url": "https://a.test", "headers": {"X-Note": "ghp_abcdefghijklmnopqrstuvwxyz0123456789"}}),
+        ] {
+            let out = call_raw(&s, "save_request", &args);
+            assert_eq!(out["isError"], true, "{args}");
+        }
+        let secret_var = call_raw(
+            &s,
+            "save_folder",
+            &json!({"folder": "rm", "vars": {"token": "abc"}}),
+        );
+        assert_eq!(secret_var["isError"], true);
+        assert!(
+            !Collection::load(temp.path())
+                .unwrap()
+                .requests
+                .contains_key("rm/leak")
+        );
+        // Con plantilla sí se permite.
+        let ok = call_raw(
+            &s,
+            "save_request",
+            &json!({"key": "rm/auth", "method": "GET", "url": "https://a.test", "headers": {"Authorization": "Bearer {{token}}"}}),
+        );
+        assert_eq!(ok["isError"], false, "{ok}");
     }
 }

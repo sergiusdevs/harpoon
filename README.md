@@ -29,6 +29,8 @@ Sin cuenta. Sin nube. Sin telemetría.
 solicitudes, ver sus cabeceras, cuerpos y auth, resolver URLs por entorno y validar
 la colección. Las variables secretas se ven como `{{api_key}}` y los valores sensibles
 como `‹oculto›`; Harpoon lo garantiza antes de responder. Sin puertos ni red: va por stdio.
+Con `--allow-write` también puede crear carpetas y solicitudes, rechazando cualquier
+credencial escrita tal cual: por ejemplo, registrar una API entera desde el chat.
 
 ```sh
 claude mcp add harpoon -- harpoon mcp -C ~/mi-api
@@ -56,7 +58,7 @@ args = ["mcp", "-C", "/Users/tu-usuario/mi-api"]
 | **Generar código** | cURL, JavaScript (fetch y axios), Python, Go, Java y C#, con variables, auth y carpetas ya resueltas |
 | **Validar** | `harpoon validate` y en la app: variables sin definir, URLs, JSON, archivos y secretos sin valor |
 | **Git** | Guardar conserva comentarios, orden y formato de los TOML: diffs mínimos. Escrituras atómicas |
-| **IA (MCP)** | `harpoon mcp` para Claude Code, Codex, Cursor… solo lectura y sin secretos |
+| **IA (MCP)** | `harpoon mcp` para Claude Code, Codex, Cursor…: consulta sin secretos y, con `--allow-write`, crea carpetas y solicitudes |
 | **Extras** | Servidor mock local, historial de respuestas, cookies por colección y runner de colecciones |
 
 ## Instalación

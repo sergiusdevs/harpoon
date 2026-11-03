@@ -15,18 +15,28 @@ use crate::history::HIDDEN;
 use crate::model::{Auth, Body, MultipartPart, Request};
 use crate::scan::{is_sensitive_name, known_secret_in};
 
+/// El texto sin sus `{{variables}}`: lo que está escrito tal cual.
+#[must_use]
+pub fn without_templates(value: &str) -> String {
+    let mut rest = value.to_owned();
+    while let (Some(a), Some(b)) = (rest.find("{{"), rest.find("}}")) {
+        if b < a {
+            break;
+        }
+        rest.replace_range(a..b + 2, "");
+    }
+    rest
+}
+
+/// ¿Este valor de `name` se ocultaría por parecer un secreto escrito tal cual?
+#[must_use]
+pub fn looks_secret(name: &str, value: &str) -> bool {
+    safe_value(name, value) == HIDDEN
+}
+
 /// ¿Se puede mostrar este valor de `name`?
 fn safe_value(name: &str, value: &str) -> String {
-    let only_templates = {
-        let mut rest = value.to_owned();
-        while let (Some(a), Some(b)) = (rest.find("{{"), rest.find("}}")) {
-            if b < a {
-                break;
-            }
-            rest.replace_range(a..b + 2, "");
-        }
-        rest
-    };
+    let only_templates = without_templates(value);
     let literal = only_templates.trim();
     if known_secret_in(value).is_some() {
         return HIDDEN.into();

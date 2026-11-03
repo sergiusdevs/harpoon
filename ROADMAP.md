@@ -101,4 +101,5 @@ Diseño original:
 - ✅ `harpoon mcp`: servidor MCP local de solo lectura (listar, ver, resolver URLs,
   validar) con los secretos enmascarados por Harpoon.
 - `--allow-send`: enviar solicitudes desde el asistente con respuestas enmascaradas.
-- `--allow-write`: crear y editar solicitudes con el detector de secretos activo.
+- ✅ `--allow-write`: crear carpetas y solicitudes con el detector de secretos activo.
+- Editar auth y scripts por MCP.
