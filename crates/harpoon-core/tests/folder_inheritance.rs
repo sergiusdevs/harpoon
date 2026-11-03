@@ -52,7 +52,7 @@ fn se_guarda_en_folder_toml_y_se_recarga() {
         col.folder_configs["api"].auth,
         Auth::Bearer { .. }
     ));
-    assert!(!col.folder_configs["api"].scripts.pre.is_empty());
+    assert_ne!(col.folder_configs["api"].scripts.pre, "");
 }
 
 #[test]
