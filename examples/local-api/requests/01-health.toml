@@ -1,0 +1,6 @@
+name = "Salud del backend"
+type = "http"
+method = "GET"
+url = "{{base_url}}/health"
+[expect]
+status = 200

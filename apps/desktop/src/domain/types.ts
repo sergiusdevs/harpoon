@@ -3,6 +3,39 @@
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 export const METHODS: Method[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
+export type RequestType = "http" | "graphql" | "websocket" | "sse";
+export const REQUEST_TYPES: { value: RequestType; label: string }[] = [
+  { value: "http", label: "HTTP / REST" },
+  { value: "graphql", label: "GraphQL" },
+  { value: "websocket", label: "WebSocket" },
+  { value: "sse", label: "SSE" },
+];
+
+/** Reconoce el tipo a partir de los datos guardados en la colección. */
+export function requestType(request: Request): RequestType {
+  if (request.type) return request.type;
+  if (/^wss?:\/\//i.test(request.url)) return "websocket";
+  if (Object.entries(enabledHeaders(request)).some(([key, value]) =>
+    key.toLowerCase() === "accept" && value.split(",").some((part) => part.split(";")[0].trim().toLowerCase() === "text/event-stream")
+  )) return "sse";
+  return request.body?.type === "graphql" ? "graphql" : "http";
+}
+
+export function newTypedRequest(name: string, type: RequestType, method: Method = "GET"): Request {
+  const request = emptyRequest(name, type === "graphql" ? "POST" : type === "http" ? method : "GET");
+  request.type = type;
+  if (type === "graphql") {
+    request.url = "{{base_url}}/graphql";
+    request.body = { type: "graphql", query: "", variables: "{}", operation_name: "" };
+  } else if (type === "websocket") {
+    request.url = "wss://localhost/socket";
+  } else if (type === "sse") {
+    request.url = "{{base_url}}/events";
+    request.headers.Accept = "text/event-stream";
+  }
+  return request;
+}
+
 export type Auth =
   | { type: "inherit" }
   | { type: "none" }
@@ -56,7 +89,7 @@ export type MultipartPart =
 export type Body =
   | { type: "none" }
   | { type: "json"; json: string }
-  | { type: "graphql"; query: string; variables: string; operation_name: string }
+  | { type: "graphql"; schema?: string; query: string; variables: string; operation_name: string }
   | { type: "text"; text: string }
   | { type: "xml"; xml: string }
   | { type: "binary"; path: string }
@@ -77,12 +110,16 @@ export interface Scripts {
 }
 
 export interface Request {
+  type?: RequestType;
   name: string;
   method: Method;
   url: string;
   headers: Record<string, string>;
+  header_descriptions?: Record<string, string>;
+  query_descriptions?: Record<string, string>;
   query: Record<string, string>;
   disabled_query: string[];
+  disabled_headers?: string[];
   auth: Auth;
   body: Body;
   scripts: Scripts;
@@ -111,6 +148,7 @@ export interface Settings {
 }
 
 export interface Environment {
+  descriptions?: Record<string, string>;
   vars: Record<string, string>;
   secrets: string[];
 }
@@ -164,6 +202,7 @@ export function emptyRequest(name: string, method: Method = "GET"): Request {
     headers: {},
     query: {},
     disabled_query: [],
+    disabled_headers: [],
     auth: { type: "inherit" },
     body: { type: "none" },
     scripts: { pre: "", post: "", test: "" },
@@ -176,11 +215,15 @@ export function emptyRequest(name: string, method: Method = "GET"): Request {
 export function normalizeRequest(r: Partial<Request> & { name: string; url: string }): Request {
   return {
     name: r.name,
+    type: r.type ?? requestType(r as Request),
     method: r.method ?? "GET",
     url: r.url,
     headers: r.headers ?? {},
+    header_descriptions: r.header_descriptions ?? {},
+    query_descriptions: r.query_descriptions ?? {},
     query: r.query ?? {},
     disabled_query: r.disabled_query ?? [],
+    disabled_headers: r.disabled_headers ?? [],
     auth: normalizeAuth(r.auth as Auth | undefined),
     body: r.body?.type === "graphql" ? { ...r.body, variables: r.body.variables ?? "", operation_name: r.body.operation_name ?? "" } : r.body ?? { type: "none" },
     scripts: { pre: "", post: "", test: "", ...(r.scripts ?? {}) },
@@ -194,7 +237,7 @@ export function normalizeCollection(c: Collection): Collection {
   for (const [k, r] of Object.entries(c.requests)) requests[k] = normalizeRequest(r);
   const environments: Record<string, Environment> = {};
   for (const [k, e] of Object.entries(c.environments ?? {}))
-    environments[k] = { vars: e?.vars ?? {}, secrets: e?.secrets ?? [] };
+    environments[k] = { vars: e?.vars ?? {}, secrets: e?.secrets ?? [], descriptions: e?.descriptions ?? {} };
   const meta: CollectionMeta = {
     ...c.meta,
     vars: c.meta.vars ?? {},
@@ -228,4 +271,56 @@ export interface HistoryEntry {
   truncated: boolean;
   checks_passed: number;
   checks_total: number;
+}
+
+/** Conversión explícita: conserva lo que puede reutilizar el protocolo de destino. */
+export function convertRequestType(source: Request, type: RequestType): { request: Request; warnings: string[] } {
+  const request: Request = JSON.parse(JSON.stringify(source));
+  const warnings: string[] = [];
+  const previous = requestType(source);
+  if (previous === type) return { request, warnings };
+  request.type = type;
+  if (type === "websocket" || type === "sse") {
+    if (request.body.type !== "none") warnings.push("Se quitará el cuerpo de la solicitud.");
+    if (request.scripts.pre || request.scripts.post || request.scripts.test) warnings.push("Se conservarán los scripts, pero no se ejecutarán en la conexión.");
+    if (request.expect.status !== undefined || request.expect.max_time_ms !== undefined || request.expect.body_contains.length || Object.keys(request.expect.headers).length) warnings.push("Se conservarán las aserciones, pero no se evaluarán en la conexión.");
+    request.body = { type: "none" }; request.method = "GET";
+  } else if (type === "graphql") {
+    const body = request.body;
+    let values: { query?: unknown; variables?: unknown; operationName?: unknown } = {};
+    if (body.type === "json") { try { values = JSON.parse(body.json); } catch { /* Se avisará antes de sustituir el cuerpo. */ } }
+    if (body.type !== "graphql") {
+      const imported = values && typeof values === "object" && typeof values.query === "string";
+      if (body.type !== "none" && !imported) warnings.push("Se sustituirá el cuerpo actual por una consulta GraphQL vacía.");
+      request.body = { type: "graphql", query: imported ? values.query as string : "", variables: JSON.stringify(imported ? values.variables ?? {} : {}, null, 2), operation_name: imported && typeof values.operationName === "string" ? values.operationName : "" };
+    }
+    if (request.method !== "POST") warnings.push("El método cambiará a POST.");
+    request.method = "POST";
+  } else if (request.body.type === "graphql") {
+    const body = request.body;
+    let variables: unknown;
+    try { variables = JSON.parse(body.variables || "{}"); } catch { throw new Error("Corrige las variables JSON de GraphQL antes de convertir a HTTP."); }
+    request.body = { type: "json", json: JSON.stringify({ query: body.query, variables, ...(body.operation_name ? { operationName: body.operation_name } : {}) }, null, 2) };
+    warnings.push("La consulta GraphQL se convertirá en un cuerpo JSON.");
+  }
+  if (type === "websocket") request.url = request.url.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
+  else request.url = request.url.replace(/^wss:/i, "https:").replace(/^ws:/i, "http:");
+  for (const key of Object.keys(request.headers)) {
+    if (key.toLowerCase() !== "accept") continue;
+    if (previous === "sse" && type !== "sse") {
+      const remaining = request.headers[key].split(",").filter((part) => part.split(";")[0].trim().toLowerCase() !== "text/event-stream").join(",").trim();
+      if (remaining) request.headers[key] = remaining; else delete request.headers[key];
+    } else if (type === "sse") {
+      if (request.headers[key].toLowerCase() !== "text/event-stream") warnings.push("La cabecera Accept cambiará a text/event-stream.");
+      delete request.headers[key];
+    }
+  }
+  if (type === "sse") request.headers.Accept = "text/event-stream";
+  return { request, warnings };
+}
+
+
+export function enabledHeaders(request: Request): Record<string, string> {
+  const disabled = new Set((request.disabled_headers ?? []).map((key) => key.toLowerCase()));
+  return Object.fromEntries(Object.entries(request.headers ?? {}).filter(([key]) => !disabled.has(key.toLowerCase())));
 }

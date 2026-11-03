@@ -4,6 +4,7 @@
   import { variableSuggestions } from "../../domain/variables";
   import Modal from "../common/Modal.svelte";
 
+  let { embedded = false }: { embedded?: boolean } = $props();
   type Layer = { value: string; source: string; secret: boolean };
   let filter = $state("");
   let revealed = $state<Record<string, boolean>>({});
@@ -37,7 +38,7 @@
   });
   function id(name: string, source: string) { return JSON.stringify([name, source]); }
 </script>
-<Modal title="Variables de esta solicitud" width={760} onclose={() => (store.modal = null)}>
+{#snippet content()}
   <p class="muted hint">Prioridad: ejecución → entorno → carpeta más cercana → colección. Las variables dinámicas se generan al enviar.</p>
   <div class="context"><span class="muted">Solicitud: <span class="mono">{store.selected ?? "—"}</span></span><input bind:value={filter} placeholder="Filtrar variables u origen" aria-label="Filtrar variables u origen" /></div>
   <div class="table-wrap"><table><thead><tr><th>Variable</th><th>Valor efectivo</th><th>Origen</th></tr></thead><tbody>
@@ -56,8 +57,8 @@
     {/each}
   </tbody></table>{#if !rows.length}<p class="muted hint empty">No hay variables que coincidan.</p>{/if}</div>
   <p class="muted note">Los valores marcados como secretos y los de ejecución se ocultan inicialmente. Los valores mostrados son los guardados para cada ámbito.</p>
-  {#snippet footer()}<button class="btn" onclick={() => (store.modal = null)}>Cerrar</button>{/snippet}
-</Modal>
+{/snippet}
+{#if embedded}{@render content()}{:else}<Modal title="Variables de esta solicitud" width={760} onclose={() => (store.modal = null)}>{@render content()}{#snippet footer()}<button class="btn" onclick={() => (store.modal = null)}>Cerrar</button>{/snippet}</Modal>{/if}
 <style>
   .hint, .note { font-size: 12px; line-height: 1.5; margin: 0 0 12px; } .note { margin: 12px 0 0; }
   .context { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; margin-bottom: 12px; } .context input { width: min(240px, 100%); }

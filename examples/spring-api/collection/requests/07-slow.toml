@@ -1,0 +1,6 @@
+name = "Petición lenta · cancelar"
+type = "http"
+method = "GET"
+url = "{{base_url}}/api/slow?millis=5000"
+[expect]
+status = 200

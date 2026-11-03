@@ -1,23 +1,27 @@
 <script lang="ts">
   // Envoltorio mínimo de CodeMirror 6: JSON con plegado, o texto plano.
+  import { autocompletion, type CompletionContext } from "@codemirror/autocomplete";
+  import { graphqlCompletions } from "../../domain/graphql";
   import { onMount } from "svelte";
   import { EditorState, Compartment } from "@codemirror/state";
   import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
-  import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+  import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
   import { json } from "@codemirror/lang-json";
   import { javascript } from "@codemirror/lang-javascript";
-  import { foldGutter, syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
+  import { StreamLanguage, foldGutter, syntaxHighlighting, HighlightStyle, bracketMatching } from "@codemirror/language";
   import { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from "@codemirror/search";
   import { tags } from "@lezer/highlight";
 
   interface Props {
     value: string;
-    language?: "json" | "text" | "javascript";
+    language?: "json" | "text" | "javascript" | "graphql";
+    schema?: string;
+    label?: string;
     readonly?: boolean;
     onchange?: (value: string) => void;
     placeholder?: string;
   }
-  let { value, language = "text", readonly = false, onchange, placeholder = "" }: Props = $props();
+  let { value, language = "text", readonly = false, onchange, placeholder = "", schema = "", label = "Editor de código" }: Props = $props();
 
   let host: HTMLDivElement;
   let view: EditorView;
@@ -39,7 +43,27 @@
     { tag: tags.operator, class: "tok-op" },
   ]);
 
-  const langExt = (l: string) => (l === "json" ? [json(), foldGutter()] : l === "javascript" ? [javascript(), foldGutter()] : []);
+  const graphqlLanguage = StreamLanguage.define({
+    token(stream) {
+      if (stream.eatSpace()) return null;
+      if (stream.match(/^#.*/)) return "comment";
+      if (stream.match(/^"(?:[^"\\]|\\.)*"/)) return "string";
+      if (stream.match(/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)) return "number";
+      if (stream.match(/^\$[_A-Za-z][_0-9A-Za-z]*/)) return "variableName";
+      if (stream.match(/^(?:query|mutation|subscription|fragment|on)\b/)) return "keyword";
+      if (stream.match(/^(?:true|false|null)\b/)) return "bool";
+      if (stream.match(/^@[_A-Za-z][_0-9A-Za-z]*/)) return "meta";
+      if (stream.match(/^[_A-Za-z][_0-9A-Za-z]*/)) return "propertyName";
+      stream.next(); return "punctuation";
+    },
+  });
+  function completeGraphql(context: CompletionContext) {
+    const word = context.matchBefore(/[_A-Za-z][_0-9A-Za-z]*/);
+    if (!word && !context.explicit) return null;
+    return { from: word?.from ?? context.pos, options: graphqlCompletions(schema, context.state.doc.toString(), context.pos), validFor: /^[_0-9A-Za-z]*$/ };
+  }
+  const langExt = (l: string) => l === "graphql" ? [graphqlLanguage, autocompletion({ override: [completeGraphql] })] : l === "json" ? [json(), foldGutter()] : l === "javascript" ? [javascript(), foldGutter()] : [];
+
 
   onMount(() => {
     view = new EditorView({
@@ -67,7 +91,7 @@
             close: "cerrar",
           }),
           highlightSelectionMatches(),
-          keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
+          keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
           syntaxHighlighting(highlight),
           langConf.of(langExt(language)),
           readonlyConf.of([EditorState.readOnly.of(readonly)]),
@@ -75,7 +99,7 @@
             if (u.docChanged && onchange) onchange(u.state.doc.toString());
           }),
           EditorView.theme({ "&": { height: "100%" } }),
-          EditorView.contentAttributes.of({ "aria-placeholder": placeholder }),
+          EditorView.contentAttributes.of({ "aria-placeholder": placeholder, "aria-label": label }),
         ],
       }),
     });

@@ -146,4 +146,5 @@
   input::placeholder { color: var(--text-faint); opacity: 1; }
   input::selection { color: transparent; background: color-mix(in srgb, var(--accent) 35%, transparent); }
   .variable-input:focus-within { background: var(--bg-raised); border-radius: var(--radius); }
+  .compact:focus-within { background: transparent; }
 </style>

@@ -17,6 +17,10 @@ use crate::engine::{Engine, Error as ScriptError, ScriptRequest, ScriptResponse,
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error(
+        "WebSocket/SSE requiere una conexión interactiva. Usa Conectar en la aplicación de escritorio; send/run solo ejecuta HTTP y GraphQL"
+    )]
+    InteractiveRequest,
     #[error(transparent)]
     Script(#[from] ScriptError),
     #[error(transparent)]
@@ -55,6 +59,7 @@ fn to_script_request(req: &Request) -> ScriptRequest {
                 query,
                 variables,
                 operation_name,
+                ..
             } => graphql_script_body(query, variables, operation_name),
             Body::Text { text } => Some(text.clone()),
             Body::Xml { xml } => Some(xml.clone()),
@@ -87,6 +92,7 @@ fn apply_script_request(req: &mut Request, s: ScriptRequest) {
                 query,
                 variables,
                 operation_name,
+                ..
             },
             body,
         ) => {
@@ -119,6 +125,9 @@ pub fn prepare_for_export(
     environment: Option<&str>,
     key: &str,
 ) -> Result<Prepared> {
+    if request.request_type().is_stream() {
+        return Err(Error::InteractiveRequest);
+    }
     let base_scope = collection.scope_for_request(environment, key)?;
     let env = base_scope.flatten();
     let mut vars = collection.load_runtime_vars();
@@ -161,6 +170,9 @@ pub async fn execute_for_key(
     vars: IndexMap<String, String>,
     key: &str,
 ) -> Result<Execution> {
+    if request.request_type().is_stream() {
+        return Err(Error::InteractiveRequest);
+    }
     let base_scope = collection.scope_for_request(environment, key)?;
     let env = base_scope.flatten();
     let mut vars = vars;

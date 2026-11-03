@@ -1,6 +1,6 @@
 //! Formateo de salida: legible para humanos y JSON para máquinas.
 
-use harpoon_core::Collection;
+use harpoon_core::{Collection, RequestType};
 use harpoon_http::{Outcome, Prepared, Response};
 use harpoon_script::{Execution, TestResult};
 use serde::Serialize;
@@ -23,7 +23,13 @@ pub fn list(col: &Collection, env: Option<&str>) -> harpoon_core::Result<()> {
         let url = scope
             .interpolate(&req.url)
             .unwrap_or_else(|_| req.url.clone());
-        println!("  {key:<24} {:<7} {url}", req.method.to_string());
+        let kind = match req.request_type() {
+            RequestType::Http => req.method.to_string(),
+            RequestType::Graphql => "GQL".to_owned(),
+            RequestType::Websocket => "WS".to_owned(),
+            RequestType::Sse => "SSE".to_owned(),
+        };
+        println!("  {key:<24} {kind:<7} {url}");
     }
     Ok(())
 }

@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { streams } from "./state/streams.svelte";
   import { store } from "./state/store.svelte";
   import { isMock } from "./services/api";
   import Sidebar from "./components/collection/Sidebar.svelte";
+  import RequestTabs from "./components/request/RequestTabs.svelte";
   import RequestPane from "./components/request/RequestPane.svelte";
   import Splitter from "./components/common/Splitter.svelte";
   import Dialog from "./components/common/Dialog.svelte";
@@ -26,16 +28,16 @@
     store.restore();
     if (isMock && !store.collection) void store.open("mock");
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (store.dirty) { event.preventDefault(); event.returnValue = ""; }
+      if (store.hasUnsavedTabs) { event.preventDefault(); event.returnValue = ""; }
     };
     window.addEventListener("beforeunload", beforeUnload);
     let unlisten: (() => void) | undefined;
     if (!isMock) void import("@tauri-apps/api/window").then(async ({ getCurrentWindow }) => {
       const window = getCurrentWindow();
       unlisten = await window.onCloseRequested((event) => {
-        if (!store.dirty) return;
+        if (!store.hasUnsavedTabs) return;
         event.preventDefault();
-        store.confirmDiscard(() => window.close());
+        store.confirmDiscardAll(() => window.close());
       });
     });
     return () => { window.removeEventListener("beforeunload", beforeUnload); unlisten?.(); };
@@ -63,6 +65,7 @@
         <EnvironmentSelect />
       {/if}
     </div>
+    {#if store.collection}<RequestTabs />{/if}
     <main class="workspace">
       <RequestPane />
     </main>
@@ -77,7 +80,7 @@
 <Dialog />
 {#if store.modal === "mock" && store.collection}
   <MockServer />
-{:else if store.modal === "stream" && store.collection && store.draft}
+{:else if store.modal === "stream" && streams.current}
   <LiveConnection />
 {:else if store.modal === "search" && store.collection}
   <CollectionSearch />

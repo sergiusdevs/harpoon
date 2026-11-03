@@ -5,6 +5,7 @@
 // Los comandos de Tauri reciben sus argumentos por valor.
 #![allow(clippy::needless_pass_by_value)]
 
+mod http_requests;
 mod mock;
 mod sse;
 mod stream;
@@ -67,6 +68,8 @@ struct ExchangeDto {
 
 #[derive(Deserialize)]
 struct SendArgs {
+    #[serde(default)]
+    id: Option<String>,
     root: PathBuf,
     env: Option<String>,
     /// Identificador de la solicitud (para el historial).
@@ -273,18 +276,38 @@ fn prepare_curl(
 }
 
 #[tauri::command]
-async fn send_request(args: SendArgs) -> Result<ExchangeDto, String> {
-    let col = load(&args.root)?;
-    let client = Client::for_collection(&col).map_err(|e| e.to_string())?;
-    let exec = harpoon_script::runner::execute_persistent_for_key(
-        &client,
-        &col,
-        &args.request,
-        args.env.as_deref(),
-        &args.key,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+fn cancel_request(
+    id: String,
+    state: tauri::State<'_, http_requests::Requests>,
+) -> Result<(), http_requests::Failure> {
+    state.cancel(&id)
+}
+
+#[tauri::command]
+async fn send_request(
+    args: SendArgs,
+    state: tauri::State<'_, http_requests::Requests>,
+) -> Result<ExchangeDto, http_requests::Failure> {
+    let execute = async {
+        let col = load(&args.root).map_err(http_requests::Failure::from_detail)?;
+        let client = Client::for_collection(&col)
+            .map_err(|e| http_requests::Failure::from_detail(e.to_string()))?;
+        let exec = harpoon_script::runner::execute_persistent_for_key(
+            &client,
+            &col,
+            &args.request,
+            args.env.as_deref(),
+            &args.key,
+        )
+        .await
+        .map_err(http_requests::Failure::from)?;
+        Ok((col, exec))
+    };
+    let (col, exec) = if let Some(id) = &args.id {
+        state.run(id, execute).await?
+    } else {
+        execute.await?
+    };
     let res = &exec.response;
     let binary = res.is_binary();
     let checks_total = exec.assertions.len() + exec.tests.len();
@@ -475,6 +498,7 @@ fn save_runtime_vars(root: PathBuf, vars: IndexMap<String, String>) -> Result<()
 /// Si la ventana no puede crearse (webview del sistema ausente).
 pub fn run() {
     tauri::Builder::default()
+        .manage(http_requests::Requests::default())
         .manage(stream::Sessions::default())
         .manage(mock::MockState::default())
         .plugin(tauri_plugin_dialog::init())
@@ -519,7 +543,8 @@ pub fn run() {
             history,
             clear_history,
             prepare_curl,
-            send_request
+            send_request,
+            cancel_request
         ])
         .run(tauri::generate_context!())
         .expect("error al arrancar Harpoon");

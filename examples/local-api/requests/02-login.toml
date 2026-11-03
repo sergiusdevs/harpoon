@@ -1,0 +1,8 @@
+name = "Login y cookie de sesión"
+type = "http"
+method = "POST"
+url = "{{base_url}}/login"
+[scripts]
+post = 'harpoon.vars.set("token", harpoon.res.json().token);'
+[expect]
+status = 200

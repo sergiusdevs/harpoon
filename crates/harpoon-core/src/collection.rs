@@ -143,6 +143,7 @@ impl Collection {
                 if secrets_path.is_file() {
                     let secrets: Environment = read_toml(&secrets_path)?;
                     env.vars.extend(secrets.vars);
+                    env.descriptions.extend(secrets.descriptions);
                 }
                 environments.insert(name, env);
             }
@@ -306,6 +307,7 @@ impl Collection {
         }
         let dir = self.root.join(ENVIRONMENTS_DIR);
         let mut public = Environment {
+            descriptions: IndexMap::new(),
             vars: IndexMap::new(),
             secrets: env.secrets.clone(),
         };
@@ -313,8 +315,14 @@ impl Collection {
         for (k, v) in &env.vars {
             if env.secrets.contains(k) {
                 secret.vars.insert(k.clone(), v.clone());
+                if let Some(description) = env.descriptions.get(k) {
+                    secret.descriptions.insert(k.clone(), description.clone());
+                }
             } else {
                 public.vars.insert(k.clone(), v.clone());
+                if let Some(description) = env.descriptions.get(k) {
+                    public.descriptions.insert(k.clone(), description.clone());
+                }
             }
         }
         write_toml(&dir.join(format!("{name}.toml")), &public)?;

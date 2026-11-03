@@ -179,6 +179,9 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
     let url = scope.interpolate(&request.url)?;
     let mut headers = IndexMap::new();
     for (k, v) in &request.headers {
+        if request.header_is_disabled(k) {
+            continue;
+        }
         headers.insert(scope.interpolate(k)?, scope.interpolate(v)?);
     }
     let mut query = IndexMap::new();
@@ -272,6 +275,7 @@ pub fn prepare(collection: &Collection, request: &Request, scope: &Scope) -> Res
             query,
             variables,
             operation_name,
+            ..
         } => {
             if query.trim().is_empty() {
                 return Err(Error::Graphql("la consulta está vacía".into()));

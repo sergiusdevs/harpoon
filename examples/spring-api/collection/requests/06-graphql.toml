@@ -1,0 +1,12 @@
+name = "Usuario GraphQL"
+type = "graphql"
+method = "POST"
+url = "{{base_url}}/graphql"
+[body]
+type = "graphql"
+query = "query FindUser($id: ID!) { user(id: $id) { id name } }"
+variables = '{"id":1}'
+operation_name = "FindUser"
+schema = "type Query { user(id: ID!): User, greeting(name: String!): String! } type User { id: ID!, name: String! }"
+[expect]
+status = 200

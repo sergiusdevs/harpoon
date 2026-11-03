@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { streams } from "../../state/streams.svelte";
   import { store, basename } from "../../state/store.svelte";
   import ContextMenu, { type Item } from "../common/ContextMenu.svelte";
   import Icon from "../common/Icon.svelte";
+  import { requestType } from "../../domain/types";
   import MethodBadge from "../common/MethodBadge.svelte";
 
   let filter = $state("");
@@ -174,6 +176,7 @@
   }
 
   function onGlobalKey(e: KeyboardEvent) {
+    if (store.modal || store.dialog || e.defaultPrevented) return;
     if (!(e.metaKey || e.ctrlKey)) return;
     if (e.key === ",") { e.preventDefault(); store.modal = "themes"; return; }
     if (!store.collection) return;
@@ -210,8 +213,8 @@
         ondragend={dragEnd}
         title={req.name}
       >
-        <span class="badge-slot"><MethodBadge method={req.method} /></span>
-        <span class="name">{n.name}</span>
+        <span class="badge-slot">{#if requestType(req) === "http"}<MethodBadge method={req.method} />{:else}<span class="protocol">{requestType(req) === "websocket" ? "WS" : requestType(req) === "graphql" ? "GQL" : "SSE"}</span>{/if}</span>
+        <span class="name">{req.name || n.name}</span>
         {#if store.selected === n.key && store.dirty}<span class="dot" title="Sin guardar" aria-label="sin guardar"></span>{/if}
       </div>
     {:else}
@@ -246,30 +249,15 @@
         {#if n.children.length === 0}
           <div class="empty-folder muted" style="padding-left: {26 + (depth + 1) * 14}px">vacía · arrastra aquí o clic derecho</div>
         {/if}
-        <div role="group">{@render nodes(n.children, depth + 1)}</div>
+        <div class="tree-group" role="group">{@render nodes(n.children, depth + 1)}</div>
       {/if}
     {/if}
   {/each}
 {/snippet}
 
 <aside class="sidebar" aria-label="Colección">
-  <div class="head">
-    <div class="brand">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M3 13L12 4" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" />
-        <path d="M13.5 2.5L9 4l3 3 1.5-4.5z" fill="var(--accent)" />
-      </svg>
-      <span>Harpoon</span>
-    </div>
-    <div class="actions">
-      <button class="btn icon" title="Abrir colección" aria-label="Abrir colección" onclick={() => store.pickAndOpen()}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
-      </button>
-      <button class="btn icon" title="Importar y exportar" aria-label="Importar y exportar" aria-haspopup="menu" onclick={openImportMenu}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg></button>
-      <button class="btn icon" title="Configuración (⌘,)" aria-label="Configuración" onclick={() => (store.modal = "themes")}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.3 3a7 7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 3h4l.3-3a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1z"/></svg>
-      </button>
-    </div>
+  <div class="head" data-tauri-drag-region>
+    <span class="brand" data-tauri-drag-region>Harpoon</span>
   </div>
 
   {#if store.pendingInit}
@@ -286,8 +274,10 @@
       <p class="muted small">Se crearán <code>harpoon.toml</code>, <code>environments/dev.toml</code> y <code>requests/health.toml</code>.</p>
     </div>
   {:else if store.collection}
+    <div class="section-label">Colección<span>{Object.keys(store.collection.requests).length} solicitudes</span></div>
     <div class="collection">
       <div class="col-row">
+        <span class="collection-icon"><Icon name="folder-open" size={17} /></span>
         <div class="col-name" title={store.collection.root}>{store.collection.meta.name}</div>
         <button class="btn icon" title="Ejecutar colección" aria-label="Ejecutar colección" onclick={() => store.openRunner()}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg></button>
         <button class="btn icon" title="Ajustes de la colección" aria-label="Ajustes de la colección" onclick={() => (store.modal = "settings")}>
@@ -332,6 +322,25 @@
       <button class="btn" onclick={() => store.pickAndOpen()}>Abrir carpeta…</button>
     </div>
   {/if}
+
+    <nav class="app-actions" aria-label="Accesos de la aplicación">
+      {#if store.collection}<button class="btn app-action" onclick={() => (store.modal = "mock")}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6h1M7 17h1"/></svg><span>Servidor mock</span></button>{/if}
+      {#if streams.sessions.length}
+        <button class="btn app-action" onclick={() => (store.modal = "stream")}>
+          <span class="connection-dot" class:connected={streams.activeCount > 0}></span>
+          <span>Conexiones</span><span class="connection-count">{streams.activeCount} {streams.activeCount === 1 ? "activa" : "activas"}</span>
+        </button>
+      {/if}
+      <button class="btn app-action" title="Abrir colección" aria-label="Abrir colección" onclick={() => store.pickAndOpen()}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+        <span>Abrir colección</span>
+      </button>
+      <button class="btn app-action" title="Importar y exportar" aria-label="Importar y exportar" aria-haspopup="menu" onclick={openImportMenu}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3" /></svg><span>Importar / exportar</span></button>
+      <button class="btn app-action" title="Configuración (⌘,)" aria-label="Configuración" onclick={() => (store.modal = "themes")}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-4l-.3 3a7 7 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 3h4l.3-3a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5c.1-.3.1-.7.1-1z"/></svg>
+        <span>Configuración</span><kbd>⌘,</kbd>
+      </button>
+    </nav>
 </aside>
 
 {#if menu}
@@ -351,6 +360,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
     background: var(--bg-panel);
     min-width: 0;
     border-right: 1px solid var(--border);
@@ -359,29 +369,58 @@
     height: var(--titlebar);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 10px 0 78px; /* hueco para los semáforos de macOS */
+    padding: 0 14px 0 78px; /* hueco para los semáforos de macOS */
     -webkit-app-region: drag;
     flex: 0 0 auto;
     border-bottom: 1px solid var(--border);
   }
   .brand {
-    display: flex;
     min-width: 0;
     overflow: hidden;
-    align-items: center;
-    gap: 7px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 600;
     letter-spacing: 0.01em;
   }
-  .actions {
+  .app-actions {
+    margin-top: auto;
+    padding: 8px;
+    border-top: 1px solid var(--border);
     display: flex;
-    flex: 0 0 auto;
+    flex-direction: column;
     gap: 2px;
-    -webkit-app-region: no-drag;
+    flex: 0 0 auto;
   }
+  .app-action {
+    width: 100%;
+    min-height: 32px;
+    padding: 7px 8px;
+    gap: 9px;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: left;
+  }
+  .app-action:hover {
+    color: var(--text);
+  }
+  .app-action :global(svg) {
+    flex: 0 0 auto;
+  }
+  .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); margin: 0 4px; }
+  .connection-dot.connected { background: var(--ok); }
+  .connection-count { margin-left: auto; font-size: 10px; }
+  .app-action kbd {
+    margin-left: auto;
+    font: 11px var(--font);
+    color: var(--text-faint);
+  }
+  .section-label { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 8px; text-transform: uppercase; letter-spacing: .08em; font-size: 10px; font-weight: 600; color: var(--text-faint); }
+  .section-label span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .collection-icon { display: inline-flex; color: var(--accent); margin-right: 8px; }
   .collection {
-    padding: 16px 10px 4px 14px;
+    padding: 4px 10px 4px 14px;
   }
   .col-row {
     display: flex;
@@ -412,6 +451,7 @@
   }
   .tree {
     flex: 1;
+    min-height: 0;
     overflow: auto;
     padding: 10px 8px 12px;
     outline: none;
@@ -424,7 +464,7 @@
     width: 100%;
     text-align: left;
     padding: 7px 8px;
-    border-radius: var(--radius);
+    border-radius: 4px;
     color: var(--text);
     transition: background var(--t);
     cursor: default;
@@ -448,6 +488,7 @@
     font-weight: 400;
     opacity: 0.7;
   }
+  .tree-group { background-image: linear-gradient(var(--border), var(--border)); background-size: 1px 100%; background-repeat: no-repeat; background-position: 18px 0; }
   .folder:hover,
   .item:hover {
     background: var(--bg-hover);
@@ -464,6 +505,10 @@
   }
   .chev.closed {
     transform: rotate(-90deg);
+  }
+  .protocol {
+    font: 600 10px var(--mono);
+    color: var(--accent);
   }
   .badge-slot {
     width: 50px;

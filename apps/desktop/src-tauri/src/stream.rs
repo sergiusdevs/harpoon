@@ -1,7 +1,7 @@
 //! Sesiones efímeras WebSocket y SSE de la aplicación de escritorio.
 use crate::ws_transport;
 use futures_util::{SinkExt, StreamExt};
-use harpoon_core::{Body, Method, Request};
+use harpoon_core::{Body, Method, Request, RequestType};
 use harpoon_http::{Client, Prepared, auth::Pending};
 use serde::Serialize;
 use std::{
@@ -59,6 +59,14 @@ pub async fn start_stream(
 ) -> Result<(), String> {
     if id.is_empty() || id.len() > 100 {
         return Err("Identificador de conexión no válido".into());
+    }
+    let expected = match request.request_type() {
+        RequestType::Websocket => "websocket",
+        RequestType::Sse => "sse",
+        _ => return Err("Esta solicitud no es WebSocket ni SSE".into()),
+    };
+    if protocol != expected {
+        return Err("El protocolo no coincide con el tipo guardado en la solicitud".into());
     }
     let collection = harpoon_core::Collection::discover(&root).map_err(|e| e.to_string())?;
     request.method = Method::Get;

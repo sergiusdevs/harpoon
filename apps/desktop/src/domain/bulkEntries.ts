@@ -1,0 +1,21 @@
+export type BulkRow = { k: string; v: string; d: string };
+export function parseBulkEntries(text: string): BulkRow[] {
+  const seen = new Set<string>();
+  return text.split(/\r?\n/).flatMap((line, index) => {
+    if (!line.trim()) return [];
+    let k: string, v: string, d = "";
+    if (line.includes("\t")) {
+      const columns = line.split("\t");
+      if (columns.length > 3) throw new Error(`Línea ${index + 1}: usa como máximo nombre, valor y descripción.`);
+      [k, v, d = ""] = columns;
+    } else {
+      const match = line.match(/^([^:=]+?)\s*[:=]\s*(.*)$/);
+      if (!match) throw new Error(`Línea ${index + 1}: usa Nombre: valor o columnas separadas por tabuladores.`);
+      [, k, v] = match;
+    }
+    k = k.trim();
+    if (!k) throw new Error(`Línea ${index + 1}: falta el nombre.`);
+    if (seen.has(k)) throw new Error(`Línea ${index + 1}: el nombre ${k} está repetido.`);
+    seen.add(k); return [{ k, v, d }];
+  });
+}

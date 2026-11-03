@@ -1,4 +1,6 @@
 <script lang="ts">
+  import TabBar from "../common/TabBar.svelte";
+  import { graphqlResponseErrors } from "../../domain/graphql";
   import { store, fmtSize } from "../../state/store.svelte";
   import CodeEditor from "../common/CodeEditor.svelte";
   import { formatHtml } from "../../domain/formatHtml";
@@ -34,6 +36,7 @@
     };
   });
   const x = $derived(fromHistory ?? store.exchange);
+  const graphqlErrors = $derived(x && store.draft?.body.type === "graphql" ? graphqlResponseErrors(x.response.body) : []);
   const statusClass = (s: number) => (s < 300 ? "ok" : s < 400 ? "info" : s < 500 ? "warn" : "err");
   const pretty = $derived.by(() => {
     if (!x) return "";
@@ -124,6 +127,13 @@
     <div class="empty">
       <div class="spinner"></div>
       <p class="muted">Enviando…</p>
+      <button class="btn" onclick={() => store.cancelSend()} disabled={store.cancelling}>{store.cancelling ? "Cancelando…" : "Cancelar envío"}</button>
+    </div>
+  {:else if store.requestFailure}
+    <div class="empty fade-in" role="status">
+      <p class="err-title">{store.requestFailure.title}</p>
+      <p class="muted">{store.requestFailure.message}</p>
+      {#if store.requestFailure.detail}<details><summary>Detalles técnicos</summary><p class="err mono">{store.requestFailure.detail}</p></details>{/if}
     </div>
   {:else if store.error}
     <div class="empty fade-in">
@@ -131,6 +141,8 @@
       <p class="err mono">{store.error}</p>
     </div>
   {:else if x}
+    {#if x.response.status === 401 || x.response.status === 403}<div class="http-auth-hint" role="status"><strong>{x.response.status === 401 ? "Autenticación requerida" : "Acceso no autorizado"}</strong><span>{x.response.status === 401 ? "Revisa las credenciales o el token de esta solicitud." : "Comprueba los permisos del usuario y, si usas sesión, el token CSRF."}</span></div>{/if}
+    {#if graphqlErrors.length}<div class="graphql-response-errors" role="alert"><strong>El servidor devolvió {graphqlErrors.length} errores GraphQL</strong>{#each graphqlErrors as error}<p>{error.message}{error.path ? ` · ${error.path}` : ""}</p>{/each}<span>Una respuesta HTTP 200 también puede contener errores GraphQL.</span></div>{/if}
     {#if store.viewingHistory}
       <div class="history-banner">
         <span>Viendo respuesta del historial · {fmtTime(store.viewingHistory.at)}{#if store.viewingHistory.env} · {store.viewingHistory.env}{/if}</span>
@@ -138,26 +150,20 @@
       </div>
     {/if}
     <div class="response-toolbar">
-    <div class="tabs" role="tablist" aria-label="Secciones de la respuesta">
-      <button class="tab" role="tab" aria-selected={tab === "body"} class:active={tab === "body"} onclick={() => (tab = "body")}>Respuesta</button>
-      {#if isHtml}
-        <button class="tab" role="tab" aria-selected={tab === "preview"} class:active={tab === "preview"} onclick={() => (tab = "preview")}>Vista</button>
-      {/if}
-      <button class="tab" role="tab" aria-selected={tab === "headers"} class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers <span class="count">{Object.keys(x.response.headers).length}</span></button>
-      {#if cookies.length}
-        <button class="tab" role="tab" aria-selected={tab === "cookies"} class:active={tab === "cookies"} onclick={() => (tab = "cookies")}>Cookies <span class="count">{cookies.length}</span></button>
-      {/if}
-      <button class="tab" role="tab" aria-selected={tab === "tests"} class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if checks.length}<span class="count" class:bad={failed > 0}>{checks.length}</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "console"} class:active={tab === "console"} onclick={() => (tab = "console")}>Consola {#if x.logs.length}<span class="count">{x.logs.length}</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "sent"} class:active={tab === "sent"} onclick={() => (tab = "sent")}>Enviado</button>
-      <button class="tab" role="tab" aria-selected={tab === "history"} class:active={tab === "history"} onclick={() => (tab = "history")}>Historial {#if store.history.length}<span class="count">{store.history.length}</span>{/if}</button>
-    </div>
+    <div class="response-tabs"><TabBar label="Secciones de la respuesta" active={tab} onselect={(id) => (tab = id as Tab)} items={[
+      { id: "body", label: "Respuesta" }, { id: "headers", label: "Headers", count: Object.keys(x.response.headers).length },
+      ...(isHtml ? [{ id: "preview", label: "Vista" }] : []),
+      ...(cookies.length ? [{ id: "cookies", label: "Cookies", count: cookies.length }] : []),
+      { id: "tests", label: "Tests", count: checks.length || undefined, bad: failed > 0 },
+      { id: "console", label: "Consola", count: x.logs.length || undefined },
+      { id: "sent", label: "Enviado" }, { id: "history", label: "Historial", count: store.history.length || undefined },
+    ]} /></div>
     <div class="summary fade-in">
       <span class="status {statusClass(x.response.status)}">{x.response.status}</span>
       <span class="meta"><b>{x.response.elapsed_ms}</b> ms</span>
       <span class="meta"><b>{fmtSize(x.response.size)}</b></span>
       {#if checks.length}
-        <span class="meta tests" class:bad={failed > 0}>
+        <span class="meta tests" title="Resultado de las comprobaciones" class:bad={failed > 0}>
           {#if failed}✗ {failed}/{checks.length} tests{:else}✓ {checks.length} tests{/if}
         </span>
       {/if}
@@ -280,6 +286,9 @@
 {/if}
 
 <style>
+  .http-auth-hint { display: flex; flex-wrap: wrap; gap: 5px 10px; margin: 10px; padding: 10px; font-size: 12px; border: 1px solid var(--warn); border-radius: var(--radius); color: var(--warn); }
+  .graphql-response-errors { margin: 10px; padding: 10px; border: 1px solid var(--err); border-radius: var(--radius); color: var(--err); font-size: 12px; overflow-wrap: anywhere; }
+  .graphql-response-errors p { margin: 5px 0; }
   .pane {
     display: flex;
     flex-direction: column;
@@ -288,16 +297,16 @@
     background: var(--bg);
   }
   .response-toolbar { display: flex; align-items: center; min-width: 0; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
-  .response-toolbar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
-  .response-toolbar .tab { margin-bottom: 0; }
+  .response-tabs { flex: 1; min-width: 130px; }
+  .response-tabs :global(.tabbar) { border-bottom: 0; }
   .empty-heading { padding: 10px 20px; border-bottom: 1px solid var(--border); color: var(--text); font-weight: 600; }
   .summary {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
     flex: 0 0 auto;
     min-height: 40px;
-    padding: 4px 16px;
+    padding: 4px 12px;
     font-size: 12px;
   }
   .status {
@@ -326,6 +335,7 @@
   .meta {
     color: var(--text-muted);
   }
+  .summary .tests { display: none; }
   .meta b {
     color: var(--text);
     font-weight: 500;

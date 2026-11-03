@@ -1,0 +1,16 @@
+name = "Usuarios paginados"
+type = "http"
+method = "GET"
+url = "{{base_url}}/api/users"
+[query]
+page = "0"
+size = "10"
+[query_descriptions]
+page = "Número de página, empezando por cero"
+size = "Cantidad de usuarios por página"
+[headers]
+Accept = "application/json"
+[header_descriptions]
+Accept = "Formato de respuesta esperado"
+[expect]
+status = 200

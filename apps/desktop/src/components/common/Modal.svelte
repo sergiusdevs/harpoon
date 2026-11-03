@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modalFocus } from "../../domain/modalFocus";
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -8,16 +9,16 @@
     children: Snippet;
     footer?: Snippet;
   }
+  const titleId = $props.id();
   let { title, width = 720, onclose, children, footer }: Props = $props();
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
 
 <div class="backdrop" role="presentation" onclick={onclose}>
-  <div class="modal fade-in" role="dialog" aria-modal="true" tabindex="-1" onkeydown={() => {}} style="width: {width}px" onclick={(e) => e.stopPropagation()}>
+  <div class="modal fade-in" use:modalFocus={{ onEscape: onclose }} role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" onkeydown={() => {}} style="width: {width}px" onclick={(e) => e.stopPropagation()}>
     <header>
-      <h3>{title}</h3>
-      <button class="btn icon" onclick={onclose} title="Cerrar (Esc)">✕</button>
+      <h3 id={titleId}>{title}</h3>
+      <button class="btn icon" aria-label="Cerrar diálogo" onclick={onclose} title="Cerrar (Esc)">✕</button>
     </header>
     <div class="body">{@render children()}</div>
     {#if footer}<footer>{@render footer()}</footer>{/if}
@@ -65,6 +66,7 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+    flex-wrap: wrap;
     padding: 10px 16px;
     border-top: 1px solid var(--border);
   }

@@ -1,6 +1,12 @@
 <script lang="ts">
+  import MethodSelect from "./MethodSelect.svelte";
+  import VariableInspector from "./VariableInspector.svelte";
+  import BodyTypeSelect from "./BodyTypeSelect.svelte";
+  import TabBar from "../common/TabBar.svelte";
+  import { validateGraphql } from "../../domain/graphql";
+  import { streams } from "../../state/streams.svelte";
   import { store } from "../../state/store.svelte";
-  import { METHODS, type Auth, type Body } from "../../domain/types";
+  import { REQUEST_TYPES, requestType, type RequestType, type Auth, type Body } from "../../domain/types";
   import CodeEditor from "../common/CodeEditor.svelte";
   import KeyValue from "../common/KeyValue.svelte";
   import AuthForm from "./AuthForm.svelte";
@@ -17,9 +23,16 @@
   let exportingCurl = $state(false);
 
   let editorWidth = $state(0.48);
+  let panelWidth = $state(1000);
+  const stacked = $derived(panelWidth < 760);
+  function observePanels(node: HTMLDivElement) {
+    const observer = new ResizeObserver(([entry]) => { panelWidth = entry.contentRect.width; });
+    observer.observe(node);
+    return { destroy: () => observer.disconnect() };
+  }
   let panels = $state<HTMLDivElement>();
   function resizePanels(delta: number) {
-    if (panels?.clientWidth) editorWidth = Math.min(0.8, Math.max(0.2, editorWidth + delta / panels.clientWidth));
+    if (panels) editorWidth = Math.min(0.8, Math.max(0.2, editorWidth + delta / (stacked ? panels.clientHeight : panels.clientWidth)));
   }
 
   const headerSuggestions = [
@@ -30,10 +43,17 @@
     "Range", "Referer", "User-Agent", "X-API-Key", "X-Request-ID", "X-Requested-With",
   ];
 
-  type Tab = "params" | "headers" | "body" | "auth" | "expect" | "scripts" | "tests" | "docs";
+  type Tab = "variables" | "params" | "headers" | "body" | "auth" | "expect" | "scripts" | "tests" | "docs";
   let tab = $state<Tab>("params");
 
   const req = $derived(store.draft);
+  const type = $derived(req ? requestType(req) : "http");
+  const currentSession = $derived(streams.sessions.find((session) => session.root === store.collection?.root && session.key === store.selected));
+  const isStream = $derived(type === "websocket" || type === "sse");
+  $effect(() => {
+    void store.selected;
+    tab = type === "graphql" ? "body" : "params";
+  });
   const variables = $derived.by(() => {
     const col = store.collection;
     if (!col) return [];
@@ -86,8 +106,8 @@
       const apply = () => {
         if (!store.draft || store.selected !== selected) return;
         Object.assign(store.draft, {
-          method: imported.method, url: imported.url, headers: imported.headers,
-          query: imported.query, disabled_query: imported.disabled_query, body: imported.body, auth: imported.auth,
+          type: requestType(imported), method: imported.method, url: imported.url, headers: imported.headers,
+          query: imported.query, disabled_query: imported.disabled_query, disabled_headers: imported.disabled_headers ?? [], header_descriptions: {}, query_descriptions: {}, body: imported.body, auth: imported.auth,
         });
         store.touch();
         store.status = { kind: "ok", text: "Solicitud rellenada desde cURL · guarda los cambios" };
@@ -115,10 +135,20 @@
     const text = bodyText;
     const next: Body =
       kind === "json" ? { type: "json", json: text } : kind === "graphql" ? { type: "graphql", query: "", variables: "{}", operation_name: "" } : kind === "text" ? { type: "text", text } : kind === "xml" ? { type: "xml", xml: text } : kind === "binary" ? { type: "binary", path: "" } : kind === "form" ? { type: "form", fields: {} } : kind === "multipart" ? { type: "multipart", parts: [] } : { type: "none" };
-    set("body", next);
-    if (kind === "graphql" && req?.method === "GET") set("method", "POST");
+    const apply = () => {
+      set("body", next);
+      set("type", kind === "graphql" ? "graphql" : "http");
+      if (kind === "graphql" && req?.method === "GET") set("method", "POST");
+    };
+    const source = req?.body;
+    const raw = ["json", "text", "xml"];
+    const hasData = source && (source.type === "json" ? !!source.json : source.type === "text" ? !!source.text : source.type === "xml" ? !!source.xml : source.type === "binary" ? !!source.path : source.type === "form" ? !!Object.keys(source.fields).length : source.type === "multipart" ? !!source.parts.length : source.type === "graphql" ? !!source.query : false);
+    if (hasData && source?.type !== kind && !(raw.includes(source!.type) && raw.includes(kind))) {
+      store.dialog = { kind: "confirm", title: "Cambiar formato del cuerpo", text: "Se sustituirá el contenido del cuerpo actual. El cambio quedará pendiente de guardar.", ok: "Cambiar formato", onOk: apply };
+    } else apply();
   }
 
+  const graphqlIssues = $derived(req?.body.type === "graphql" ? validateGraphql(req.body.query, req.body.variables, req.body.operation_name, req.body.schema) : []);
   let jsonError = $state<string | null>(null);
   $effect(() => {
     if (bodyKind !== "json" || !bodyText.trim()) { jsonError = null; return; }
@@ -141,6 +171,7 @@
   }
 
   function onKey(e: KeyboardEvent) {
+    if (store.modal || store.dialog || e.defaultPrevented) return;
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       store.send();
@@ -156,6 +187,9 @@
 {#if req}
   <section class="pane" aria-label="Solicitud">
     <div class="namebar">
+      <select class="request-type" aria-label="Tipo de solicitud" value={type} disabled={store.sending} onchange={(event) => { const selected = event.currentTarget.value as RequestType; event.currentTarget.value = type; store.changeRequestType(selected); }}>
+        {#each REQUEST_TYPES as option}<option value={option.value}>{option.label}</option>{/each}
+      </select>
       <input
         class="name-input"
         value={req.name}
@@ -165,16 +199,14 @@
         spellcheck="false"
       />
       {#if store.dirty}<span class="unsaved">Sin guardar</span>{/if}
-      <span class="key mono muted" title="Archivo"><MethodBadge method={req.method} compact={false} /> {store.selected}.toml</span>
+      <span class="key mono muted" title="Archivo">{#if type === "http"}<MethodBadge method={req.method} compact={false} />{:else}{REQUEST_TYPES.find((item) => item.value === type)?.label}{/if} {store.selected}.toml</span>
     </div>
     <div class="urlbar">
+
       <div class="address">
-        <div class="method-wrap">
-          <select aria-label="Método HTTP" class="method-select method {req.method}" value={req.method} onchange={(e) => set("method", e.currentTarget.value as typeof req.method)}>
-            {#each METHODS as m}<option value={m}>{m}</option>{/each}
-          </select>
-          <svg class="method-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-        </div>
+        {#if !isStream}
+        <MethodSelect value={req.method} onchange={(method) => set("method", method)} />
+        {/if}
         <div class="url">
           <VariableInput
             value={req.url}
@@ -190,15 +222,17 @@
         <button class="btn icon save" onclick={() => store.save()} disabled={!store.dirty} title="Guardar (⌘S)" aria-label="Guardar solicitud">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2z"/><path d="M7 3v6h10V4M7 21v-8h10v8"/></svg>
         </button>
+        {#if !isStream}
         <button class="btn icon save" title="Exportar como cURL" aria-label="Exportar como cURL" onclick={() => (exportingCurl = true)}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 8-4 4 4 4m8-8 4 4-4 4m-2-12-4 16" /></svg>
         </button>
+        {/if}
       </div>
-      <button class="btn variables-button" onclick={() => (store.modal = "variables")} title="Ver variables de esta solicitud">Variables</button>
-      <button class="btn variables-button" onclick={() => (store.modal = "stream")} title="Conectar por WebSocket o SSE">Tiempo real</button>
-      <button class="btn primary send" onclick={() => store.send()} disabled={store.sending}>
-        {#if store.sending}<span class="pulse">Enviando</span>{:else}Enviar{/if}
-      </button>
+      {#if store.sending}
+        <button class="btn send" onclick={() => store.cancelSend()} disabled={store.cancelling}>{store.cancelling ? "Cancelando…" : "Cancelar envío"}</button>
+      {:else}
+        <button class="btn primary send" onclick={() => store.send()}>{#if isStream}{currentSession && currentSession.state !== "closed" ? "Ver conexión" : "Conectar"}{:else}Enviar{/if}</button>
+      {/if}
     </div>
 
     {#if req.url.includes("{{")}
@@ -207,48 +241,46 @@
         <span class:unresolved={!!urlError} class="mono">{urlError || resolvedUrl || "Resolviendo…"}</span>
       </div>
     {/if}
-    <div class="panels" bind:this={panels}>
-      <div class="request-editor" style:width={`${editorWidth * 100}%`}>
-    <div class="tabs" role="tablist" aria-label="Secciones de la solicitud">
-      <button class="tab" role="tab" aria-selected={tab === "params"} class:active={tab === "params"} onclick={() => (tab = "params")}>Params {#if count(req.query)}<span class="count">{count(req.query)}</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "headers"} class:active={tab === "headers"} onclick={() => (tab = "headers")}>Headers {#if count(req.headers)}<span class="count">{count(req.headers)}</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "body"} class:active={tab === "body"} onclick={() => (tab = "body")}>Body {#if bodyKind !== "none"}<span class="count">{bodyKind}</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "auth"} class:active={tab === "auth"} onclick={() => (tab = "auth")}>Auth {#if req.auth.type !== "inherit"}<span class="count">{req.auth.type}</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "expect"} class:active={tab === "expect"} onclick={() => (tab = "expect")}>Expect</button>
-      <button class="tab" role="tab" aria-selected={tab === "scripts"} class:active={tab === "scripts"} onclick={() => (tab = "scripts")}>Scripts {#if req.scripts.pre || req.scripts.post}<span class="count">js</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "tests"} class:active={tab === "tests"} onclick={() => (tab = "tests")}>Tests {#if req.scripts.test}<span class="count">js</span>{/if}</button>
-      <button class="tab" role="tab" aria-selected={tab === "docs"} class:active={tab === "docs"} onclick={() => (tab = "docs")}>Docs</button>
-    </div>
+    <div class="panels" class:stacked use:observePanels bind:this={panels}>
+      <div class="request-editor" style:width={stacked ? "100%" : `${editorWidth * 100}%`} style:height={stacked ? `${editorWidth * 100}%` : "100%"}>
+    <div class="request-tabbar"><div class="section-tabs">
+    <TabBar label="Secciones de la solicitud" active={tab} onselect={(id) => (tab = id as Tab)} items={[
+      { id: "params", label: "Params", count: count(req.query) || undefined },
+      ...(!isStream ? [{ id: "body", label: type === "graphql" ? "GraphQL" : "Body" }] : []),
+      { id: "headers", label: "Headers", count: count(req.headers) || undefined },
+      { id: "auth", label: "Auth" },
+      { id: "variables", label: "Vars" },
+      ...(!isStream ? [{ id: "scripts", label: "Scripts" }, { id: "expect", label: "Expect" }, { id: "tests", label: "Tests" }] : []),
+      { id: "docs", label: "Docs" },
+    ]} />
+    </div>{#if tab === "body" && type !== "graphql"}<BodyTypeSelect value={bodyKind} onchange={setBodyKind} />{/if}</div>
 
     <div class="content">
       {#if tab === "params"}
-        <KeyValue {variables} disabledKeys={req.disabled_query} onDisabledChange={(keys) => set("disabled_query", keys)} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
+        <p class="table-label">Parámetros de consulta</p>
+        <KeyValue descriptions={req.query_descriptions ?? {}} onDescriptionsChange={(values) => set("query_descriptions", values)} {variables} disabledKeys={req.disabled_query} onDisabledChange={(keys) => set("disabled_query", keys)} entries={req.query} onchange={(v) => set("query", v)} keyPlaceholder="parámetro" addLabel="Añadir parámetro" />
       {:else if tab === "headers"}
-        <KeyValue {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} />
+        <p class="table-label">Cabeceras de la solicitud</p>
+        <KeyValue disabledKeys={req.disabled_headers ?? []} onDisabledChange={(keys) => set("disabled_headers", keys)} caseInsensitive descriptions={req.header_descriptions ?? {}} onDescriptionsChange={(values) => set("header_descriptions", values)} {variables} entries={req.headers} onchange={(v) => set("headers", v)} keyPlaceholder="Cabecera" valuePlaceholder="valor" addLabel="Añadir cabecera" suggestions={headerSuggestions} />
       {:else if tab === "body"}
         <div class="body">
-          <div class="body-bar">
-            <div class="segmented" role="radiogroup" aria-label="Tipo de cuerpo">
-              {#each [["none", "Sin cuerpo"], ["json", "JSON"], ["graphql", "GraphQL"], ["text", "Texto"], ["xml", "XML"], ["binary", "Binario"], ["form", "Formulario"], ["multipart", "Multipart"]] as [k, label]}
-                <button role="radio" aria-checked={bodyKind === k} class:active={bodyKind === k} onclick={() => setBodyKind(k as Body["type"])}>{label}</button>
-              {/each}
-            </div>
-            {#if bodyKind === "json"}
-              <button class="btn small" onclick={formatJson} title="Reindentar el JSON">Formatear</button>
-              {#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}
-            {/if}
-          </div>
+          {#if bodyKind === "json"}<div class="body-bar"><button class="btn small" onclick={formatJson}>Formatear JSON</button>{#if jsonError}<span class="json-error" role="alert">{jsonError}</span>{/if}</div>{/if}
           {#if bodyKind === "json" || bodyKind === "text" || bodyKind === "xml"}
             <div class="editor-wrap">
               <CodeEditor value={bodyText} language={bodyKind === "json" ? "json" : "text"} onchange={setBodyText} />
             </div>
           {:else if req.body.type === "graphql"}
             <div class="graphql-editor">
+              {#if graphqlIssues.length}<div class="graphql-errors" role="status">{#each graphqlIssues as issue}<p>{issue.line ? `Línea ${issue.line}, columna ${issue.column}: ` : ""}{issue.message}</p>{/each}</div>{/if}
               <label>Nombre de operación <span class="muted">opcional</span><input value={req.body.operation_name ?? ""} placeholder="Nombre de operación" oninput={(e) => { if (req.body.type === "graphql") set("body", { ...req.body, operation_name: e.currentTarget.value }); }} /></label>
               <div class="graphql-label">Consulta</div>
-              <div class="graphql-query"><CodeEditor value={req.body.query} language="text" onchange={(value) => { if (req.body.type === "graphql") set("body", { ...req.body, query: value }); }} /></div>
+              <div class="graphql-query"><CodeEditor value={req.body.query} language="graphql" schema={req.body.schema ?? ""} label="Consulta GraphQL" onchange={(value) => { if (req.body.type === "graphql") set("body", { ...req.body, query: value }); }} /></div>
               <div class="graphql-label">Variables <span class="muted">JSON</span></div>
-              <div class="graphql-vars"><CodeEditor value={req.body.variables ?? ""} language="json" onchange={(value) => { if (req.body.type === "graphql") set("body", { ...req.body, variables: value }); }} /></div>
+              <div class="graphql-vars"><CodeEditor value={req.body.variables ?? ""} language="json" label="Variables GraphQL" onchange={(value) => { if (req.body.type === "graphql") set("body", { ...req.body, variables: value }); }} /></div>
+              <details class="schema-details"><summary>Esquema SDL local · validación y autocompletado</summary>
+                <p class="muted">Pega el esquema de la API. Se guarda en la colección y no se envía al servidor. Usa Ctrl+Espacio para ver sugerencias.</p>
+                <textarea aria-label="Esquema GraphQL SDL" value={req.body.schema ?? ""} spellcheck="false" placeholder={"type Query { user(id: ID!): User }"} oninput={(event) => { if (req.body.type === "graphql") set("body", { ...req.body, schema: event.currentTarget.value }); }}></textarea>
+              </details>
             </div>
           {:else if bodyKind === "binary"}
             <div class="binary-editor">
@@ -266,6 +298,8 @@
             </div>
           {/if}
         </div>
+      {:else if tab === "variables"}
+        <VariableInspector embedded />
       {:else if tab === "auth"}
         <AuthForm
           auth={req.auth}
@@ -305,8 +339,17 @@
       {/if}
     </div>
       </div>
-      <Splitter onresize={resizePanels} />
-      <div class="response-panel"><ResponsePane /></div>
+      <Splitter direction={stacked ? "vertical" : "horizontal"} onresize={resizePanels} />
+      <div class="response-panel">
+        {#if isStream}
+          <div class="stream-summary">
+            <h3>{type === "websocket" ? "WebSocket" : "Eventos SSE"}</h3>
+            <p class="muted">{currentSession?.state === "open" ? "Conexión activa" : currentSession?.state === "connecting" ? "Conectando…" : currentSession?.state === "closing" ? "Desconectando…" : "Sin conexión activa"}</p>
+            <p class="muted">{type === "websocket" ? "Envía y recibe mensajes desde el panel de conexiones." : "Consulta los eventos del servidor desde el panel de conexiones."} Puedes seguir trabajando con otras solicitudes mientras está conectado.</p>
+            <button class="btn" onclick={() => store.openStream()}>Abrir conexión</button>
+          </div>
+        {:else}<ResponsePane />{/if}
+      </div>
     </div>
   </section>
 {:else}
@@ -320,13 +363,16 @@
 {#if exportingCurl}<CurlExport onclose={() => (exportingCurl = false)} />{/if}
 
 <style>
+  .stream-summary { padding: 24px; max-width: 480px; }
+  .stream-summary h3 { font-size: 14px; margin-top: 0; }
   .pane {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-width: 0;
   }
-  .panels { flex: 1; display: flex; min-height: 0; min-width: 0; padding: 0 20px 16px; }
+  .panels { flex: 1; display: flex; min-height: 0; min-width: 0; padding: 0 0 0; border-top: 1px solid var(--border); }
+  .panels.stacked { flex-direction: column; }
   .request-editor { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 0; min-width: 0; overflow: hidden; }
   .response-panel { flex: 1; min-height: 0; min-width: 0; }
   .center {
@@ -344,6 +390,7 @@
     flex: 0 0 auto;
     display: flex;
     align-items: baseline;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 12px 20px 0;
   }
@@ -362,6 +409,7 @@
   }
   .unsaved { color: var(--warn); font-size: 11px; white-space: nowrap; }
   .key {
+    min-width: 0;
     font-size: 11px;
     white-space: nowrap;
     overflow: hidden;
@@ -375,14 +423,16 @@
     flex: 0 0 auto;
     display: flex;
     gap: 8px;
-    padding: 10px 20px 12px;
+    padding: 10px 18px 12px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
-  .address { display: flex; flex: 1 1 240px; min-width: 0; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg); }
+  .address { display: flex; flex: 1 1 0; min-width: 0; align-items: center; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg); min-height: 36px; }
+  .url :global(.integrated input) { height: 34px; padding: 6px 10px; }
   .address:focus-within { border-color: var(--accent); }
   .address .save { margin: 0 6px; flex: 0 0 auto; }
-  .send { justify-content: center; min-width: 92px; min-height: 38px; }
+  .request-type { flex: 0 0 auto; min-height: 38px; max-width: 130px; font-size: 11px; min-height: 26px; padding: 3px 7px; background: transparent; border-color: transparent; }
+  .send { border-radius: 7px; padding: 6px 15px; font-size: 12px; justify-content: center; min-width: 76px; min-height: 36px; flex: 0 0 auto; }
   .resolved-url { flex: 0 0 auto; display: flex; gap: 8px; padding: 0 20px 9px; font-size: 11px; min-width: 0; }
   .resolved-url span:last-child { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
   .resolved-url span.unresolved { color: var(--warn); }
@@ -394,8 +444,14 @@
     align-items: center;
     gap: 10px;
   }
-  .body-bar .segmented { max-width: 100%; overflow-x: auto; }
-  .body-bar .segmented button { white-space: nowrap; }
+  .request-tabbar { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+  .section-tabs { flex: 1; min-width: 0; }
+  .section-tabs :global(.tabbar) { border-bottom: 0; }
+  .table-label { color: var(--text-muted); font-size: 12px; margin: 0 0 14px; }
+  .graphql-errors { color: var(--err); font-size: 12px; overflow-wrap: anywhere; }
+  .graphql-errors p { margin: 2px 0; }
+  .schema-details { font-size: 12px; }
+  .schema-details textarea { width: 100%; min-height: 120px; resize: vertical; font-family: var(--mono); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; }
   .graphql-editor { display: flex; flex-direction: column; gap: 7px; flex: 1; min-height: 360px; }
   .graphql-editor label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
   .graphql-label { font-size: 12px; color: var(--text-muted); }
@@ -414,20 +470,6 @@
   .nobody p {
     margin: 0;
   }
-  .method-wrap { position: relative; flex: 0 0 96px; display: flex; align-items: center; }
-  .method-chevron { position: absolute; right: 10px; color: var(--text-muted); pointer-events: none; }
-  .method-select {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 100%;
-    padding: 10px 26px 10px 12px;
-    cursor: pointer;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    font-weight: 700;
-  }
-  .method-select:focus-visible { outline: none; box-shadow: none; }
   .url {
     flex: 1 1 140px;
     min-width: 100px;
@@ -507,9 +549,5 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-top: 6px;
-  }
-  .hint {
-    font-size: 12px;
-    margin: 4px 0;
   }
 </style>

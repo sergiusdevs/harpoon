@@ -140,6 +140,10 @@ Las variables de ejecución se guardan en `.harpoon/vars.toml` (fuera de Git).
 - Atajos: `⌘↩` enviar, `⌘S` guardar, `⌘N` nueva solicitud, `⇧⌘N` carpeta, `⌘E`
   entornos, `⌘,` configuración de la app (temas y fuentes). Los ajustes de la
   colección se abren desde el botón junto a su nombre.
+- Pestañas de solicitudes con borradores independientes, selector de tipos y menús `>>` para las secciones que no caben.
+- Cancelación de solicitudes HTTP en curso y errores con causas y detalles diferenciados.
+- GraphQL con validación local y autocompletado a partir de esquemas SDL.
+- Conexiones WebSocket/SSE persistentes al navegar, con acceso desde el pie de la barra lateral.
 - Modo demo sin Rust: `npm run dev` abre la UI en el navegador con datos de ejemplo.
 
 ## Documentación
@@ -197,6 +201,10 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
 cd apps/desktop && npm run check && npm test && npm run build
 ```
+
+Para probar los protocolos contra un backend local sin dependencias, consulta
+[scripts/README.md](scripts/README.md). Incluye una batería de integración con la
+CLI real y la colección `examples/local-api` para pruebas manuales en la app.
 
 El CI (GitHub Actions) ejecuta todo lo anterior en Linux, macOS y Windows.
 

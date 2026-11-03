@@ -226,3 +226,144 @@ async fn guarda_las_cookies_del_handshake() {
     }
     assert!(col.root.join(".harpoon/cookies.json").is_file());
 }
+
+fn event_channel() -> (
+    tauri::ipc::Channel<super::StreamEvent>,
+    tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>,
+) {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let channel = tauri::ipc::Channel::new(move |body| {
+        let value = body.deserialize::<serde_json::Value>().unwrap();
+        let _ = tx.send(value);
+        Ok(())
+    });
+    (channel, rx)
+}
+
+async fn next_event(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>,
+    kind: &str,
+) -> serde_json::Value {
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let event = rx.recv().await.expect("canal abierto");
+            if event["kind"] == kind {
+                return event;
+            }
+        }
+    })
+    .await
+    .expect("evento recibido a tiempo")
+}
+
+#[tokio::test]
+async fn websocket_envia_recibe_y_desconecta_por_el_canal_real() {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}/socket", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        if let Some(Ok(message @ Message::Text(_))) = socket.next().await {
+            socket.send(message).await.unwrap();
+        }
+        let _ = socket.next().await;
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let col = Collection::init(tmp.path(), "eco").unwrap();
+    let req = Request::new("ws", Method::Get, url);
+    let prepared = harpoon_http::prepare(&col, &req, &col.scope(None).unwrap()).unwrap();
+    let (channel, mut events) = event_channel();
+    let (actions, receiver) = tokio::sync::mpsc::channel(8);
+    let task =
+        tokio::spawn(async move { super::websocket(&col, &prepared, &channel, receiver).await });
+    next_event(&mut events, "open").await;
+    actions
+        .send(super::Action::Send("hola Harpoon".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        next_event(&mut events, "sent").await["data"],
+        "hola Harpoon"
+    );
+    assert_eq!(
+        next_event(&mut events, "message").await["data"],
+        "hola Harpoon"
+    );
+    actions.send(super::Action::Stop).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn sse_reconecta_con_last_event_id_y_se_puede_detener() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/events", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        let mut requests = Vec::new();
+        for id in 1..=2 {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = vec![0u8; 8192];
+            let n = stream.read(&mut buffer).await.unwrap();
+            requests.push(String::from_utf8_lossy(&buffer[..n]).to_lowercase());
+            let body = format!("retry: 250\nid: {id}\nevent: tick\ndata: evento-{id}\n\n");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        }
+        requests
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let col = Collection::init(tmp.path(), "eventos").unwrap();
+    let req = Request::new("sse", Method::Get, url);
+    let prepared = harpoon_http::prepare(&col, &req, &col.scope(None).unwrap()).unwrap();
+    let (channel, mut events) = event_channel();
+    let (actions, receiver) = tokio::sync::mpsc::channel(8);
+    let task = tokio::spawn(async move { super::sse(&col, &prepared, &channel, receiver).await });
+    let first = next_event(&mut events, "message").await;
+    assert_eq!(first["data"], "evento-1");
+    assert_eq!(first["id"], "1");
+    assert_eq!(first["event"], "tick");
+    next_event(&mut events, "reconnecting").await;
+    assert_eq!(next_event(&mut events, "message").await["data"], "evento-2");
+    actions.send(super::Action::Stop).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(3), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let requests = server.await.unwrap();
+    assert!(!requests[0].contains("last-event-id:"));
+    assert!(requests[1].contains("last-event-id: 1"));
+}
+
+#[tokio::test]
+async fn sse_rechaza_respuestas_que_no_son_event_stream() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/events", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buffer = [0u8; 8192];
+        let _ = stream.read(&mut buffer).await.unwrap();
+        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}").await.unwrap();
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let col = Collection::init(tmp.path(), "eventos").unwrap();
+    let req = Request::new("sse", Method::Get, url);
+    let prepared = harpoon_http::prepare(&col, &req, &col.scope(None).unwrap()).unwrap();
+    let (channel, _) = event_channel();
+    let (_actions, receiver) = tokio::sync::mpsc::channel(8);
+    let error = super::sse(&col, &prepared, &channel, receiver)
+        .await
+        .unwrap_err();
+    assert!(error.contains("Content-Type SSE no válido"), "{error}");
+}

@@ -29,6 +29,7 @@ fn carpetas_anidadas_respetan_prioridad_y_se_cargan_de_disco() {
     col.save_environment(
         "prod",
         Environment {
+            descriptions: IndexMap::new(),
             vars: vars(&[("origin", "env")]),
             secrets: vec![],
         },

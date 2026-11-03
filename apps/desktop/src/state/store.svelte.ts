@@ -1,13 +1,19 @@
 // Estado global de la app con runes de Svelte 5.
 
+import { parseCurl } from "../domain/curl";
+import { activateTab, emptyTabs, pruneTabs, remapTabs, type TabView } from "../domain/requestTabs";
+import { validateGraphql } from "../domain/graphql";
+import { requestFailure, type RequestFailure } from "../domain/requestFailure";
+import { streams } from "./streams.svelte";
 import { api, folderChain } from "../services/api";
 import { themes, type Theme } from "../domain/themes";
 import { interfaceFonts, editorFonts, type InterfaceFont, type EditorFont } from "../domain/fonts";
-import { emptyRequest, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type Request } from "../domain/types";
+import { convertRequestType, newTypedRequest, requestType, type RequestType, type Collection, type CollectionMeta, type Environment, type Exchange, type HistoryEntry, type Method, type Request } from "../domain/types";
 
 export type Status = { kind: "idle" | "ok" | "err" | "busy"; text: string };
 
 export type Dialog =
+  | { kind: "request"; title: string; label: string; value: string; placeholder: string; method: Method; ok: string; onOk: (value: string, method: Method, type: RequestType, url: string, curl?: string) => Promise<void> | void }
   | { kind: "prompt"; title: string; label?: string; value: string; placeholder?: string; ok: string; onOk: (value: string) => Promise<void> | void }
   | { kind: "confirm"; title: string; text: string; ok: string; danger?: boolean; onOk: () => Promise<void> | void };
 
@@ -16,6 +22,7 @@ class Store {
   /** Carpetas bajo requests/, incluidas las vacías. */
   folders = $state<string[]>([]);
   selected = $state<string | null>(null);
+  tabs = $state(emptyTabs());
   env = $state<string | null>(null);
   /** Copia editable de la solicitud seleccionada. */
   draft = $state<Request | null>(null);
@@ -23,6 +30,9 @@ class Store {
   exchange = $state<Exchange | null>(null);
   error = $state<string | null>(null);
   sending = $state(false);
+  cancelling = $state(false);
+  requestFailure = $state<RequestFailure | null>(null);
+  private sendId: string | null = null;
   status = $state<Status>({ kind: "idle", text: "Abre una colección" });
   theme = $state<Theme>("dark");
   interfaceFont = $state<InterfaceFont>("system");
@@ -61,9 +71,43 @@ class Store {
     return false;
   }
 
+  get hasUnsavedTabs() { return this.dirty || Object.values(this.tabs.views).some((view) => view.dirty); }
+  private currentView(): TabView | null {
+    return this.draft ? { draft: this.draft, dirty: this.dirty, exchange: this.exchange, error: this.error, failure: this.requestFailure } : null;
+  }
+  tabRequest(key: string) { return key === this.selected ? this.draft : this.tabs.views[key]?.draft ?? this.collection?.requests[key]; }
+  tabDirty(key: string) { return key === this.selected ? this.dirty : this.tabs.views[key]?.dirty ?? false; }
+  confirmDiscardAll(action: () => void | Promise<void>): boolean {
+    if (!this.hasUnsavedTabs) return true;
+    this.dialog = { kind: "confirm", title: "Cambios sin guardar", text: "Hay solicitudes abiertas con cambios sin guardar. ¿Quieres descartarlos y continuar?", ok: "Descartar cambios", danger: true, onOk: async () => {
+      this.tabs.views = {};
+      if (this.selected && this.collection?.requests[this.selected]) this.draft = structuredClone($state.snapshot(this.collection.requests[this.selected]));
+      this.dirty = false; await action();
+    } };
+    return false;
+  }
+  closeTab(key: string, discard = false) {
+    if (this.tabDirty(key) && !discard) {
+      this.dialog = { kind: "confirm", title: "Cerrar solicitud", text: "Esta solicitud tiene cambios sin guardar. ¿Quieres descartarlos y cerrar la pestaña?", ok: "Descartar y cerrar", danger: true, onOk: () => this.closeTab(key, true) }; return;
+    }
+    const index = this.tabs.opened.indexOf(key);
+    this.tabs.opened = this.tabs.opened.filter((item) => item !== key); delete this.tabs.views[key];
+    if (this.selected === key) {
+      this.selected = null; this.draft = null; this.dirty = false; this.exchange = null; this.error = null; this.requestFailure = null; this.history = [];
+      const next = this.tabs.opened[Math.min(index, this.tabs.opened.length - 1)]; if (next) this.select(next);
+    }
+  }
+  private remapOpenTabs(from: string, to: string, folder = false) {
+    const view = this.currentView();
+    if (this.selected && view) this.tabs.views[this.selected] = JSON.parse(JSON.stringify($state.snapshot(view)));
+    const rename = remapTabs(this.tabs, from, to, folder);
+    if (this.selected) this.selected = rename(this.selected);
+  }
+
   // ---------- colección ----------
 
   async open(path: string) {
+    if (this.collection && path !== this.collection.root && !this.confirmDiscardAll(() => this.open(path))) return;
     try {
       const col = await (await api).openCollection(path);
       await this.adopt(col, { selectFirst: true });
@@ -93,13 +137,17 @@ class Store {
   }
 
   async pickAndOpen() {
-    if (!this.confirmDiscard(() => this.pickAndOpen())) return;
+    if (!this.confirmDiscardAll(() => this.pickAndOpen())) return;
     const path = await (await api).pickFolder();
     if (path) await this.open(path);
   }
 
   /** Sustituye la colección en memoria conservando la selección si sigue existiendo. */
   private async adopt(col: Collection, opts: { selectFirst?: boolean; select?: string } = {}) {
+    if (this.collection?.root !== col.root) {
+      this.tabs = emptyTabs(); this.selected = null; this.draft = null; this.dirty = false;
+    }
+    pruneTabs(this.tabs, col.requests);
     this.collection = col;
     this.runtimeVariables = {};
     try { this.runtimeVariables = await (await api).runtimeVars(col.root); } catch { /* la colección sigue disponible */ }
@@ -113,11 +161,11 @@ class Store {
       if (first) this.select(first);
       else {
         this.selected = null;
-        this.draft = null;
+        this.draft = null; this.dirty = false;
       }
     } else {
       this.selected = null;
-      this.draft = null;
+      this.draft = null; this.dirty = false;
     }
   }
 
@@ -142,17 +190,12 @@ class Store {
 
   select(key: string, opts: { keepDraft?: boolean } = {}) {
     if (!this.collection) return;
-    if (key === this.selected && this.dirty) return;
-    if (key !== this.selected && !this.confirmDiscard(() => this.select(key, opts))) return;
-    const req = this.collection.requests[key];
-    if (!req) return;
     if (opts.keepDraft && this.selected === key && this.draft) return;
-    this.selected = key;
-    this.draft = structuredClone($state.snapshot(req));
-    this.dirty = false;
-    this.exchange = null;
-    this.error = null;
-    this.viewingHistory = null;
+    const view = activateTab(this.tabs, this.selected, this.currentView(), key, this.collection.requests);
+    if (!view) return;
+    this.selected = key; this.draft = view.draft; this.dirty = view.dirty;
+    this.exchange = view.exchange; this.error = view.error; this.requestFailure = view.failure;
+    this.viewingHistory = null; this.history = [];
     void this.loadHistory();
   }
 
@@ -162,7 +205,9 @@ class Store {
       return;
     }
     try {
-      this.history = await (await api).history(this.collection.root, this.selected);
+      const root = this.collection.root, key = this.selected;
+      const history = await (await api).history(root, key);
+      if (this.collection?.root === root && this.selected === key) this.history = history;
     } catch {
       this.history = [];
     }
@@ -182,48 +227,114 @@ class Store {
 
   touch() {
     this.dirty = true;
+    if (this.selected && this.tabs.views[this.selected]) this.tabs.views[this.selected].dirty = true;
   }
 
   async save() {
     if (!this.collection || !this.selected || !this.draft) return;
+    const root = this.collection.root, key = this.selected;
+    const request = structuredClone($state.snapshot(this.draft));
     await this.run(async () => {
-      const req = structuredClone($state.snapshot(this.draft!));
-      await (await api).saveRequest(this.collection!.root, this.selected!, req);
-      this.collection!.requests[this.selected!] = req;
-      this.dirty = false;
-      this.status = { kind: "ok", text: `Guardado requests/${this.selected}.toml` };
+      await (await api).saveRequest(root, key, request);
+      if (this.collection?.root !== root) return;
+      this.collection.requests[key] = request;
+      const cached = this.tabs.views[key];
+      if (cached && JSON.stringify(cached.draft) === JSON.stringify(request)) cached.dirty = false;
+      if (this.selected === key && JSON.stringify($state.snapshot(this.draft)) === JSON.stringify(request)) {
+        this.dirty = false; if (cached) { cached.dirty = false; cached.draft = request; }
+      }
+      this.status = { kind: "ok", text: `Guardado requests/${key}.toml` };
     });
+  }
+
+  changeRequestType(type: RequestType) {
+    if (!this.draft || !this.collection || requestType(this.draft) === type || this.sending) return;
+    const root = this.collection.root, key = this.selected;
+    const active = streams.sessions.find((session) => session.root === root && session.key === key && session.state !== "closed");
+    if (active) {
+      this.dialog = { kind: "confirm", title: "Conexión activa", text: "Desconecta esta sesión antes de cambiar el tipo de solicitud.", ok: "Ver conexión", onOk: () => { streams.manager.select(active.identity); this.modal = "stream"; } };
+      return;
+    }
+    try {
+      const { request, warnings } = convertRequestType($state.snapshot(this.draft), type);
+      const apply = () => {
+        if (this.collection?.root !== root || this.selected !== key) return;
+        this.draft = request; this.touch(); this.exchange = null;
+        this.error = null; this.requestFailure = null;
+      };
+      if (warnings.length) this.dialog = { kind: "confirm", title: "Cambiar tipo de solicitud", text: warnings.join(" ") + " Los cambios quedarán pendientes de guardar.", ok: "Cambiar tipo", onOk: apply };
+      else apply();
+    } catch (cause) { this.status = { kind: "err", text: requestFailure(cause).detail }; }
+  }
+
+  openStream() {
+    if (!this.collection || !this.selected || !this.draft) return;
+    const type = requestType(this.draft);
+    if (type !== "websocket" && type !== "sse") return;
+    streams.manager.open(this.collection.root, this.selected, this.env, $state.snapshot(this.draft), type);
+    this.modal = "stream";
+  }
+
+  async cancelSend() {
+    if (!this.sendId || this.cancelling) return;
+    this.cancelling = true;
+    try { await (await api).cancelRequest(this.sendId); }
+    catch (cause) { this.status = { kind: "err", text: requestFailure(cause).message }; this.cancelling = false; }
   }
 
   async send() {
     if (!this.collection || !this.draft || this.sending) return;
-    this.sending = true;
-    this.error = null;
+    if (["websocket", "sse"].includes(requestType(this.draft))) {
+      this.openStream();
+      return;
+    }
+    if (this.draft.body.type === "graphql" && !this.draft.scripts.pre && !this.collection.meta.scripts.pre) {
+      const body = this.draft.body;
+      const issues = validateGraphql(body.query, body.variables, body.operation_name, body.schema);
+      if (issues.length) {
+        const detail = issues.map((issue) => issue.message).join("\n");
+        this.requestFailure = { code: "graphql", title: "Revisa la consulta GraphQL", message: "Corrige la consulta o las variables antes de enviarla.", detail };
+        this.error = detail; return;
+      }
+    }
+    const root = this.collection.root;
+    const key = this.selected ?? "";
+    const id = crypto.randomUUID();
+    this.sendId = id;
+    this.sending = true; this.cancelling = false;
+    this.error = null; this.requestFailure = null;
     this.status = { kind: "busy", text: `${this.draft.method} ${this.draft.url}` };
     try {
       const req = structuredClone($state.snapshot(this.draft));
-      const x = await (await api).sendRequest(this.collection.root, this.env, req, this.selected ?? "");
-      this.exchange = x;
-      this.runtimeVariables = x.vars;
-      this.viewingHistory = null;
-      void this.loadHistory();
-      this.status = {
-        kind: x.passed ? "ok" : "err",
-        text: `${x.response.status} · ${x.response.elapsed_ms} ms · ${fmtSize(x.response.size)}`,
-      };
-    } catch (e) {
-      this.exchange = null;
-      this.error = String(e);
-      this.status = { kind: "err", text: String(e) };
+      const x = await (await api).sendRequest(root, this.env, req, key, id);
+      if (this.collection?.root === root) this.runtimeVariables = x.vars;
+      if (this.collection?.root === root && this.selected === key) {
+        this.exchange = x;
+        this.viewingHistory = null;
+        void this.loadHistory();
+      }
+      if (this.collection?.root === root && this.tabs.opened.includes(key) && this.tabs.views[key]) {
+        this.tabs.views[key].exchange = x; this.tabs.views[key].error = null; this.tabs.views[key].failure = null;
+      }
+      this.status = { kind: x.passed ? "ok" : "err", text: `${x.response.status} · ${x.response.elapsed_ms} ms · ${fmtSize(x.response.size)}` };
+    } catch (cause) {
+      const failure = requestFailure(cause);
+      if (this.collection?.root === root && this.selected === key) {
+        this.exchange = null; this.requestFailure = failure;
+        this.error = failure.code === "cancelled" ? null : failure.detail || failure.message;
+      }
+      if (this.collection?.root === root && this.tabs.opened.includes(key) && this.tabs.views[key]) {
+        this.tabs.views[key].exchange = null; this.tabs.views[key].error = failure.detail; this.tabs.views[key].failure = failure;
+      }
+      this.status = { kind: failure.code === "cancelled" ? "idle" : "err", text: failure.title };
     } finally {
-      this.sending = false;
+      if (this.sendId === id) { this.sendId = null; this.sending = false; this.cancelling = false; }
     }
   }
 
   // ---------- crear / renombrar / borrar ----------
 
   importCurl() {
-    if (!this.confirmDiscard(() => this.importCurl())) return;
     this.modal = "curl";
   }
 
@@ -239,19 +350,21 @@ class Store {
   }
 
   newRequest(folder = "") {
-    if (!this.confirmDiscard(() => this.newRequest(folder))) return;
     this.dialog = {
-      kind: "prompt",
+      kind: "request",
       title: folder ? `Nueva solicitud en ${folder}/` : "Nueva solicitud",
-      label: "Nombre (identificador de archivo)",
+      label: "Nombre de la solicitud",
       value: "",
       placeholder: "listar-usuarios",
+      method: "GET",
       ok: "Crear",
-      onOk: async (name) => {
+      onOk: async (name, method, type, url, curl) => {
         const key = (folder ? folder + "/" : "") + slug(name);
         if (!slug(name)) throw "El nombre no puede estar vacío";
         if (this.collection!.requests[key]) throw `Ya existe ${key}`;
-        const req = emptyRequest(name.trim());
+        const req = curl ? parseCurl(curl) : newTypedRequest(name.trim(), type, method);
+        req.name = name.trim(); req.type = requestType(req);
+        if (!curl && url.trim()) req.url = url.trim();
         await (await api).saveRequest(this.collection!.root, key, req);
         const col = await (await api).openCollection(this.collection!.root);
         await this.adopt(col, { select: key });
@@ -261,7 +374,6 @@ class Store {
   }
 
   duplicate(key: string) {
-    if (!this.confirmDiscard(() => this.duplicate(key))) return;
     const src = this.collection?.requests[key];
     if (!src) return;
     this.dialog = {
@@ -283,7 +395,6 @@ class Store {
   }
 
   renameRequest(key: string) {
-    if (this.selected === key && !this.confirmDiscard(() => this.renameRequest(key))) return;
     this.dialog = {
       kind: "prompt",
       title: "Renombrar solicitud",
@@ -294,7 +405,8 @@ class Store {
         const target = normalizeKey(to);
         if (target === key) return;
         const col = await (await api).renameRequest(this.collection!.root, key, target);
-        await this.adopt(col, { select: this.selected === key ? target : undefined });
+        this.remapOpenTabs(key, target);
+        await this.adopt(col, { select: this.selected ?? undefined });
       },
     };
   }
@@ -332,7 +444,6 @@ class Store {
   }
 
   renameFolder(folder: string) {
-    if (this.selected?.startsWith(folder + "/") && !this.confirmDiscard(() => this.renameFolder(folder))) return;
     this.dialog = {
       kind: "prompt",
       title: "Renombrar carpeta",
@@ -343,8 +454,8 @@ class Store {
         const target = normalizeKey(to);
         if (target === folder) return;
         const col = await (await api).renameFolder(this.collection!.root, folder, target);
-        const sel = this.selected?.startsWith(folder + "/") ? target + this.selected.slice(folder.length) : undefined;
-        await this.adopt(col, { select: sel });
+        this.remapOpenTabs(folder, target, true);
+        await this.adopt(col, { select: this.selected ?? undefined });
       },
     };
   }
@@ -371,7 +482,6 @@ class Store {
     const name = path.split("/").pop()!;
     const target = targetFolder ? `${targetFolder}/${name}` : name;
     if (target === path) return;
-    if ((this.selected === path || (kind === "folder" && this.selected?.startsWith(path + "/"))) && !this.confirmDiscard(() => this.moveInto(kind, path, targetFolder))) return;
     if (kind === "folder" && (targetFolder === path || targetFolder.startsWith(path + "/"))) {
       this.status = { kind: "err", text: "No se puede mover una carpeta dentro de sí misma" };
       return;
@@ -381,13 +491,8 @@ class Store {
         kind === "request"
           ? await (await api).renameRequest(this.collection!.root, path, target)
           : await (await api).renameFolder(this.collection!.root, path, target);
-      const sel =
-        kind === "request" && this.selected === path
-          ? target
-          : kind === "folder" && this.selected?.startsWith(path + "/")
-            ? target + this.selected.slice(path.length)
-            : undefined;
-      await this.adopt(col, { select: sel });
+      this.remapOpenTabs(path, target, kind === "folder");
+      await this.adopt(col, { select: this.selected ?? undefined });
       this.status = { kind: "ok", text: `Movido a ${targetFolder || "la raíz"}` };
     });
   }
@@ -416,18 +521,16 @@ class Store {
   // ---------- entornos y ajustes ----------
 
   async saveEnvironment(name: string, env: Environment) {
-    await this.run(async () => {
-      const col = await (await api).saveEnvironment(this.collection!.root, name, env);
-      await this.adopt(col);
-      this.status = { kind: "ok", text: `Guardado environments/${name}.toml` };
-    });
+    if (!this.collection) throw new Error("Abre una colección primero");
+    const col = await (await api).saveEnvironment(this.collection.root, name, env);
+    await this.adopt(col);
+    this.status = { kind: "ok", text: `Guardado environments/${name}.toml` };
   }
 
   async deleteEnvironment(name: string) {
-    await this.run(async () => {
-      const col = await (await api).deleteEnvironment(this.collection!.root, name);
-      await this.adopt(col);
-    });
+    if (!this.collection) return;
+    const col = await (await api).deleteEnvironment(this.collection.root, name);
+    await this.adopt(col);
   }
 
   async saveFolderVars(folder: string, vars: Record<string, string>) {

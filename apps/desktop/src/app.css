@@ -1,19 +1,19 @@
 /* Harpoon — tokens de diseño. Oscuro por defecto, denso y limpio. */
 :root {
   color-scheme: dark;
-  --bg: #17191d;
-  --bg-panel: #1c1f23;
-  --bg-raised: #24282d;
-  --bg-hover: #2a2c31;
-  --bg-active: #2f3238;
-  --border: #30343a;
-  --border-strong: #3a3d45;
-  --text: #e2e5e8;
-  --text-muted: #a0a6ae;
-  --text-faint: #78808a;
-  --accent: #4fa3c4;
-  --accent-strong: #63b7d8;
-  --accent-soft: rgba(79, 163, 196, 0.16);
+  --bg: #20272f;
+  --bg-panel: #1b222a;
+  --bg-raised: #29333e;
+  --bg-hover: #303d49;
+  --bg-active: #344551;
+  --border: #35424e;
+  --border-strong: #465866;
+  --text: #e5edf3;
+  --text-muted: #a7b6c3;
+  --text-faint: #7d91a1;
+  --accent: #72b9bd;
+  --accent-strong: #9ad3d3;
+  --accent-soft: rgba(114, 185, 189, 0.13);
   --ok: #5fb87a;
   --warn: #e0a82e;
   --err: #e0665c;
@@ -30,7 +30,7 @@
   --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
   --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   --editor-font-size: 12.5px;
-  --radius: 7px;
+  --radius: 6px;
   --titlebar: 46px;
   --t: 120ms ease;
 }
@@ -170,8 +170,8 @@ select {
 
 input:focus,
 select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--border-strong);
+  box-shadow: none;
 }
 
 input {
@@ -641,4 +641,18 @@ input {
 .btn.primary:disabled:hover { background: var(--accent); border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+
+/* La edición de tablas marca la celda, sin dibujar otra caja sobre ella. */
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+.kv td:focus-within { background: var(--bg-hover); }
+.kv input, .kv input:hover, .kv input:focus, .kv input:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+  background: transparent;
 }

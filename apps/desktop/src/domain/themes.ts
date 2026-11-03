@@ -1,5 +1,5 @@
 export const themes = [
-  { id: "dark", name: "Harpoon Dark", detail: "El tema original", bg: "#17191d", panel: "#24282d", accent: "#4fa3c4", text: "#e2e5e8" },
+  { id: "dark", name: "Harpoon Dark", detail: "El tema original", bg: "#20272f", panel: "#29333e", accent: "#72b9bd", text: "#e5edf3" },
   { id: "light", name: "Harpoon Light", detail: "Claro y limpio", bg: "#f6f6f4", panel: "#ffffff", accent: "#1f6f8b", text: "#1e2024" },
   { id: "dark-plus", name: "Dark+", detail: "Inspirado en VS Code", bg: "#1e1e1e", panel: "#252526", accent: "#569cd6", text: "#d4d4d4" },
   { id: "dracula", name: "Dracula", detail: "Púrpura y vibrante", bg: "#282a36", panel: "#343746", accent: "#bd93f9", text: "#f8f8f2" },

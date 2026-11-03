@@ -62,6 +62,7 @@ Alternativa sin archivo: variable de entorno `HARPOON_TOKEN` (fase 1).
 
 ```toml
 name = "Crear usuario"
+type = "http"                   # http | graphql | websocket | sse
 method = "POST"                 # GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
 url = "{{base_url}}/{{api_version}}/users"
 disabled_query = ["notify"]     # opcional: conserva el parámetro sin enviarlo
@@ -195,6 +196,16 @@ por su primera etiqueta, con servidores, parámetros y ejemplos disponibles.
 Se indican los datos que requieren configuración manual. Las referencias
 externas, esquemas, respuestas y validaciones no se convierten.
 
+El campo `type` de la solicitud es independiente de `[body].type`. Se guarda
+explícitamente al crear solicitudes en la app. Los archivos antiguos pueden
+omitirlo: se reconoce WebSocket por `ws://`/`wss://`, SSE por `Accept:
+text/event-stream` y GraphQL por su cuerpo; el resto se considera HTTP.
+Para URLs completamente variables (`{{socket_url}}`), indica `type = "websocket"`.
+
+Las tablas de parámetros y cabeceras pueden incluir documentación local en
+`[query_descriptions]` y `[header_descriptions]`. Se indexa por el mismo nombre
+del parámetro o cabecera y no forma parte del tráfico enviado.
+
 ## GraphQL por HTTP
 
 Selecciona `GraphQL` en el cuerpo de la solicitud para editar la consulta,
@@ -209,12 +220,29 @@ type = "graphql"
 query = "query GetUser($id: ID!) { user(id: $id) { name } }"
 variables = '{ "id": "{{user_id}}" }'
 operation_name = "GetUser"
+schema = "type Query { user(id: ID!): User } type User { name: String }" # opcional y local
 ```
+
+La app valida sintaxis, variables JSON y nombre de operación antes de enviar.
+Con un esquema SDL local valida campos y tipos y ofrece autocompletado con
+Ctrl+Espacio. El esquema se guarda en `[body].schema` y no se envía al servidor.
+Si hay scripts previos, la validación local no impide que estos preparen el cuerpo.
+Los errores GraphQL del servidor se muestran también con respuestas HTTP 200.
 
 ## WebSocket y SSE
 
-El botón **Tiempo real** abre una conexión usando la URL, parámetros,
-cabeceras, variables y autenticación de la solicitud actual.
+Elige **WebSocket** o **SSE** al crear la solicitud. El botón **Conectar** abre
+una conexión usando la URL, parámetros, cabeceras, variables y autenticación.
+Cerrar el panel o navegar a otra solicitud mantiene la sesión. El acceso
+**Conexiones** de la barra lateral muestra las sesiones activas y permite volver
+a ellas o desconectarlas. Las sesiones terminan al cerrar la aplicación.
+Los cambios de URL del panel se reflejan en el borrador de la solicitud seleccionada;
+**Guardar** los escribe en la colección. La conexión activa mantiene la configuración
+capturada al abrirla; desconecta y vuelve a abrirla para aplicar otros cambios.
+
+El runner de la app y `harpoon run` omiten WS/SSE con un aviso. Si solo se
+seleccionan solicitudes interactivas, la CLI termina con un error de uso.
+`harpoon send` rechaza estos tipos antes de ejecutar scripts o enviar tráfico.
 WebSocket permite enviar y recibir texto; los mensajes binarios se indican por
 su tamaño. SSE muestra eventos e identificadores y se reconecta automáticamente.
 Los scripts no se ejecutan en estas conexiones. WebSocket admite proxy HTTP/HTTPS
@@ -239,3 +267,18 @@ panel y se detiene al cerrar la aplicación. También se puede ejecutar con
 libre. Las rutas se evalúan en orden, el método debe coincidir y la query se
 ignora. Un segmento como `{id}` coincide con cualquier segmento no vacío.
 Las respuestas son estáticas y se aplican los cambios al reiniciar el servidor.
+
+
+## Descripciones y visibilidad de variables de entorno
+
+Los entornos pueden documentar sus variables en `[descriptions]`, con el mismo
+nombre de clave que `[vars]`. Las variables normales y los secretos se editan en
+una misma tabla; el ojo solo revela u oculta el valor en pantalla. Las descripciones
+de variables secretas se guardan junto a sus valores en el archivo local
+`<entorno>.secrets.toml`. Al cargar la colección se fusionan ambos archivos.
+
+`disabled_headers = ["X-Debug"]` conserva las cabeceras manuales pero excluye
+sus valores del envío y de la interpolación de variables, igual que
+`disabled_query`. La comparación de nombres de cabecera ignora mayúsculas.
+Las filas desmarcadas se muestran atenuadas. Las cabeceras automáticas de
+cuerpo o autenticación se siguen gestionando desde Body y Auth.

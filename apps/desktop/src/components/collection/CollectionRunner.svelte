@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { requestFailure } from "../../domain/requestFailure";
   import { store } from "../../state/store.svelte";
   import { api } from "../../services/api";
-  import type { Outcome, Request } from "../../domain/types";
+  import { requestType, type Outcome, type Request } from "../../domain/types";
   import Modal from "../common/Modal.svelte";
   import MethodBadge from "../common/MethodBadge.svelte";
 
@@ -13,14 +14,21 @@
   let results = $state<RunResult[]>([]);
   let completed = $state(false);
   let current = $state("");
+  let activeId: string | null = null;
+  async function stopRun() {
+    stop = true;
+    if (activeId) { try { await (await api).cancelRequest(activeId); } catch (cause) { error = requestFailure(cause).message; } }
+  }
   let error = $state("");
-  const selected = $derived(Object.entries(store.collection?.requests ?? {}).filter(([key]) => !folder || key.startsWith(folder + "/")));
+  const inScope = $derived(Object.entries(store.collection?.requests ?? {}).filter(([key]) => !folder || key.startsWith(folder + "/")));
+  const interactive = $derived(inScope.filter(([, request]) => ["websocket", "sse"].includes(requestType(request))));
+  const selected = $derived(inScope.filter(([, request]) => !["websocket", "sse"].includes(requestType(request))));
   const failures = $derived(results.filter((result) => !result.passed).length);
 
   function close() { if (!running) store.modal = null; }
   async function run() {
     if (!store.collection || running || !selected.length) return;
-    if (store.dirty) { error = "Guarda la solicitud actual antes de ejecutar la colección."; return; }
+    if (store.hasUnsavedTabs) { error = "Guarda las solicitudes abiertas antes de ejecutar la colección."; return; }
     if (store.sending) { error = "Espera a que termine la solicitud en curso."; return; }
     const root = store.collection.root;
     const env = store.env;
@@ -32,19 +40,23 @@
         if (stop) break;
         current = key;
         try {
-          const exchange = await bridge.sendRequest(root, env, request, key);
+          activeId = crypto.randomUUID();
+          const exchange = await bridge.sendRequest(root, env, request, key, activeId);
+          activeId = null;
           results.push({ key, name: request.name, method: request.method, passed: exchange.passed, status: exchange.response.status, elapsed: exchange.response.elapsed_ms, checks: exchange.assertions.length + exchange.tests.length, failures: [...exchange.assertions, ...exchange.tests].filter((item) => !item.passed) });
           if (store.collection?.root === root) store.runtimeVariables = exchange.vars;
           if (bail && !exchange.passed) break;
         } catch (cause) {
-          results.push({ key, name: request.name, method: request.method, passed: false, failures: [], error: String(cause) });
+          activeId = null;
+          if (stop && requestFailure(cause).code === "cancelled") break;
+          results.push({ key, name: request.name, method: request.method, passed: false, failures: [], error: requestFailure(cause).title + ": " + requestFailure(cause).detail });
           if (bail) break;
         }
       }
       if (store.collection?.root === root) void store.loadHistory();
       completed = true;
     } catch (cause) { error = String(cause); }
-    finally { current = ""; running = false; }
+    finally { activeId = null; current = ""; running = false; }
   }
   function openRequest(key: string) { close(); store.select(key); }
 </script>
@@ -55,9 +67,11 @@
     <label class="check"><input type="checkbox" bind:checked={bail} disabled={running} /> Detener al primer fallo</label>
   </div>
   <p class="muted hint">{selected.length} solicitudes · entorno: {store.env ?? store.collection?.meta.default_environment ?? "sin entorno"}. Se ejecutan en orden y comparten las variables de ejecución. El resultado depende de las aserciones y tests configurados.</p>
-  {#if store.dirty}<p class="warning">Guarda los cambios de la solicitud actual para ejecutar la versión guardada.</p>{/if}
+  {#if interactive.length}<p class="warning">Solicitudes WebSocket/SSE omitidas ({interactive.length}): {interactive.map(([key]) => key).join(", ")}. Ábrelas con Conectar.</p>{/if}
+  {#if !selected.length}<p class="muted hint">No hay solicitudes HTTP/GraphQL ejecutables en esta selección.</p>{/if}
+  {#if store.hasUnsavedTabs}<p class="warning">Guarda los cambios de las solicitudes abiertas para ejecutar la versión guardada.</p>{/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  {#if running}<p class="muted hint" aria-live="polite">{stop ? "Se detendrá al terminar la solicitud actual" : `Ejecutando ${current}…`}</p>{/if}
+  {#if running}<p class="muted hint" aria-live="polite">{stop ? "Cancelando la solicitud actual…" : `Ejecutando ${current}…`}</p>{/if}
   {#if completed}<p class="summary" aria-live="polite">{stop ? "Ejecución detenida" : "Ejecución finalizada"} · {results.length} ejecutadas · <span class:failed={failures > 0}>{failures} con fallos</span></p>{/if}
   {#if results.length}
     <div class="results">
@@ -74,7 +88,7 @@
     </div>
   {/if}
   {#snippet footer()}
-    {#if running}<button class="btn" disabled={stop} onclick={() => { stop = true; }}>Detener</button>{:else}<button class="btn" onclick={close}>Cerrar</button><button class="btn primary" disabled={!selected.length || store.dirty || store.sending} onclick={run}>{results.length ? "Ejecutar de nuevo" : "Ejecutar"}</button>{/if}
+    {#if running}<button class="btn" disabled={stop} onclick={stopRun}>Detener</button>{:else}<button class="btn" onclick={close}>Cerrar</button><button class="btn primary" disabled={!selected.length || store.hasUnsavedTabs || store.sending} onclick={run}>{results.length ? "Ejecutar de nuevo" : "Ejecutar"}</button>{/if}
   {/snippet}
 </Modal>
 <style>

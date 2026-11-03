@@ -222,7 +222,7 @@ async fn run() -> anyhow::Result<ExitCode> {
         } => {
             let col = open(cli.collection.as_deref())?;
             let client = Client::for_collection(&col)?;
-            let selected: Vec<(&String, &harpoon_core::Request)> = col
+            let mut selected: Vec<(&String, &harpoon_core::Request)> = col
                 .requests
                 .iter()
                 .filter(|(key, _)| {
@@ -234,6 +234,19 @@ async fn run() -> anyhow::Result<ExitCode> {
             anyhow::ensure!(
                 !selected.is_empty(),
                 "ninguna solicitud coincide con el filtro"
+            );
+
+            selected.retain(|(key, request)| {
+                if request.request_type().is_stream() {
+                    eprintln!("Omitida {key}: WebSocket/SSE requiere Conectar en la aplicación de escritorio");
+                    false
+                } else {
+                    true
+                }
+            });
+            anyhow::ensure!(
+                !selected.is_empty(),
+                "no hay solicitudes HTTP/GraphQL ejecutables en esta selección"
             );
 
             // Filas de datos: cada una es una ejecución completa.

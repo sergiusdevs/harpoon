@@ -135,6 +135,8 @@ pub enum Body {
     },
     Graphql {
         query: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        schema: String,
         #[serde(default)]
         variables: String,
         #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -192,20 +194,45 @@ impl Scripts {
     }
 }
 
+/// Protocolo de una solicitud. Los archivos antiguos se reconocen por su contenido.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RequestType {
+    Http,
+    Graphql,
+    Websocket,
+    Sse,
+}
+
+impl RequestType {
+    #[must_use]
+    pub fn is_stream(self) -> bool {
+        matches!(self, Self::Websocket | Self::Sse)
+    }
+}
+
 /// Una solicitud, tal y como se guarda en `requests/**/*.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
     pub name: String,
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub request_type: Option<RequestType>,
     #[serde(default)]
     pub method: Method,
     pub url: String,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub headers: IndexMap<String, String>,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub header_descriptions: IndexMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub query_descriptions: IndexMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub query: IndexMap<String, String>,
     /// Nombres de parámetros conservados en la colección pero excluidos del envío.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub disabled_query: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled_headers: Vec<String>,
     #[serde(default)]
     pub auth: Auth,
     #[serde(default)]
@@ -220,14 +247,53 @@ pub struct Request {
 
 impl Request {
     #[must_use]
+    pub fn header_is_disabled(&self, name: &str) -> bool {
+        self.disabled_headers
+            .iter()
+            .any(|key| key.eq_ignore_ascii_case(name))
+    }
+    #[must_use]
+    pub fn request_type(&self) -> RequestType {
+        if let Some(kind) = self.request_type {
+            return kind;
+        }
+        let url = self.url.to_ascii_lowercase();
+        if url.starts_with("ws://") || url.starts_with("wss://") {
+            return RequestType::Websocket;
+        }
+        if self.headers.iter().any(|(key, value)| {
+            !self.header_is_disabled(key)
+                && key.eq_ignore_ascii_case("accept")
+                && value.split(',').any(|part| {
+                    part.split(';')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .eq_ignore_ascii_case("text/event-stream")
+                })
+        }) {
+            return RequestType::Sse;
+        }
+        if matches!(self.body, Body::Graphql { .. }) {
+            RequestType::Graphql
+        } else {
+            RequestType::Http
+        }
+    }
+
+    #[must_use]
     pub fn new(name: impl Into<String>, method: Method, url: impl Into<String>) -> Self {
         Self {
             name: name.into(),
+            request_type: None,
             method,
             url: url.into(),
             headers: IndexMap::new(),
+            header_descriptions: IndexMap::new(),
+            query_descriptions: IndexMap::new(),
             query: IndexMap::new(),
             disabled_query: Vec::new(),
+            disabled_headers: Vec::new(),
             auth: Auth::Inherit,
             body: Body::None,
             scripts: Scripts::default(),
@@ -240,6 +306,8 @@ impl Request {
 /// Un entorno: un conjunto de variables con nombre (`environments/<nombre>.toml`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Environment {
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub descriptions: IndexMap<String, String>,
     #[serde(default)]
     pub vars: IndexMap<String, String>,
     /// Nombres de variables cuyo valor NO se guarda en el repo: se leen de

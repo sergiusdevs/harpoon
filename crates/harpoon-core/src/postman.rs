@@ -212,11 +212,12 @@ fn parse_items(
         };
         for h in r["header"].as_array().into_iter().flatten() {
             let k = text(h, "key");
-            if h["disabled"] == true {
-                preview
-                    .warnings
-                    .push(format!("{name}: cabecera desactivada {k} omitida"));
-                continue;
+            if h["disabled"] == true && !k.is_empty() {
+                req.disabled_headers.push(k.clone());
+            }
+            let description = text(h, "description");
+            if !description.is_empty() {
+                req.header_descriptions.insert(k.clone(), description);
             }
             if !k.is_empty() && req.headers.insert(k.clone(), text(h, "value")).is_some() {
                 preview
@@ -247,6 +248,10 @@ fn parse_items(
                         .warnings
                         .push(format!("{name}: parámetro duplicado {k}"));
                 }
+                let description = text(q, "description");
+                if !description.is_empty() {
+                    req.query_descriptions.insert(k.clone(), description);
+                }
                 if q["disabled"] == true {
                     req.disabled_query.push(k);
                 }
@@ -265,6 +270,7 @@ fn parse_items(
                     }
                 }
                 "graphql" => Body::Graphql {
+                    schema: String::new(),
                     query: text(&b["graphql"], "query"),
                     variables: text(&b["graphql"], "variables"),
                     operation_name: String::new(),
@@ -490,7 +496,7 @@ fn post_request(r: &Request, warnings: &mut Vec<String>) -> Value {
     query.extend(
         r.query
             .iter()
-            .map(|(k, v)| json!({"key":k,"value":v,"disabled":r.disabled_query.contains(k)})),
+            .map(|(k, v)| json!({"key":k,"value":v,"disabled":r.disabled_query.contains(k),"description":r.query_descriptions.get(k).cloned().unwrap_or_default()})),
     );
     let mut raw = without_fragment.to_owned();
     for (key, value) in &r.query {
@@ -512,7 +518,7 @@ fn post_request(r: &Request, warnings: &mut Vec<String>) -> Value {
     let headers: Vec<_> = r
         .headers
         .iter()
-        .map(|(k, v)| json!({"key":k,"value":v,"type":"text"}))
+        .map(|(k, v)| json!({"key":k,"value":v,"type":"text","disabled":r.header_is_disabled(k),"description":r.header_descriptions.get(k).cloned().unwrap_or_default()}))
         .collect();
     let body = match &r.body {
         Body::None => Value::Null,
@@ -523,6 +529,7 @@ fn post_request(r: &Request, warnings: &mut Vec<String>) -> Value {
             query,
             variables,
             operation_name,
+            ..
         } => {
             if !operation_name.is_empty() {
                 warnings.push(format!(

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { parseBulkEntries } from "../../domain/bulkEntries";
   import { onMount, tick } from "svelte";
   import VariableInput from "./VariableInput.svelte";
   import type { VariableSuggestion } from "../../domain/variables";
@@ -14,13 +15,21 @@
     suggestions?: readonly string[];
     variables?: VariableSuggestion[];
     disabledKeys?: string[];
+    descriptions?: Record<string, string>;
+    caseInsensitive?: boolean;
+    onDescriptionsChange?: (descriptions: Record<string, string>) => void;
     onDisabledChange?: (keys: string[]) => void;
   }
-  let { entries, onchange, keyPlaceholder = "clave", valuePlaceholder = "valor", addLabel = "Añadir", suggestions = [], variables, disabledKeys = [], onDisabledChange }: Props = $props();
+  let { entries, onchange, keyPlaceholder = "clave", valuePlaceholder = "valor", addLabel = "Añadir", suggestions = [], variables, disabledKeys = [], onDisabledChange, descriptions = {}, onDescriptionsChange, caseInsensitive = false }: Props = $props();
 
+  const sameKey = (first: string, second: string) => caseInsensitive ? first.toLowerCase() === second.toLowerCase() : first === second;
+  const isDisabled = (key: string) => disabledKeys.some((disabled) => sameKey(disabled, key));
   const suggestionsId = $props.id();
 
-  let rows = $state<{ k: string; v: string }[]>([]);
+  let rows = $state<{ k: string; v: string; d: string }[]>([]);
+  let bulk = $state(false);
+  let bulkText = $state("");
+  let bulkError = $state("");
   let table = $state<HTMLTableElement | null>(null);
   let openRow = $state<number | null>(null);
   let activeOption = $state(-1);
@@ -82,38 +91,39 @@
   });
 
   $effect(() => {
-    const next = Object.entries(entries).map(([k, v]) => ({ k, v }));
-    rows = [...next, { k: "", v: "" }];
+    const next = Object.entries(entries).map(([k, v]) => ({ k, v, d: descriptions[k] ?? "" }));
+    rows = [...next, { k: "", v: "", d: "" }];
   });
 
   function commit() {
     const out: Record<string, string> = {};
     for (const r of rows) if (r.k.trim()) out[r.k.trim()] = r.v;
     onchange(out);
+    onDescriptionsChange?.(Object.fromEntries(rows.filter((row) => row.k.trim() && row.d.trim()).map((row) => [row.k.trim(), row.d])));
   }
 
-  function edit(i: number, field: "k" | "v", val: string) {
+  function edit(i: number, field: "k" | "v" | "d", val: string) {
     const oldKey = rows[i].k.trim();
     rows[i][field] = val;
-    if (field === "k" && onDisabledChange && disabledKeys.includes(oldKey)) {
+    if (field === "k" && onDisabledChange && isDisabled(oldKey)) {
       const next = val.trim();
-      onDisabledChange(disabledKeys.filter((key) => key !== oldKey).concat(next ? [next] : []));
+      onDisabledChange(disabledKeys.filter((key) => !sameKey(key, oldKey)).concat(next ? [next] : []));
     }
-    if (i === rows.length - 1 && (rows[i].k || rows[i].v)) rows.push({ k: "", v: "" });
+    if (i === rows.length - 1 && (rows[i].k || rows[i].v)) rows.push({ k: "", v: "", d: "" });
     commit();
   }
 
   function remove(i: number) {
     const key = rows[i].k.trim();
-    if (onDisabledChange && disabledKeys.includes(key)) onDisabledChange(disabledKeys.filter((item) => item !== key));
+    if (onDisabledChange && isDisabled(key)) onDisabledChange(disabledKeys.filter((item) => !sameKey(item, key)));
     rows.splice(i, 1);
-    if (rows.length === 0 || rows[rows.length - 1].k) rows.push({ k: "", v: "" });
+    if (rows.length === 0 || rows[rows.length - 1].k) rows.push({ k: "", v: "", d: "" });
     commit();
     focusKey(Math.min(i, rows.length - 1));
   }
 
   function add() {
-    if (rows[rows.length - 1].k) rows.push({ k: "", v: "" });
+    if (rows[rows.length - 1].k) rows.push({ k: "", v: "", d: "" });
     focusKey(rows.length - 1);
   }
 
@@ -131,14 +141,27 @@
     const parsed = lines
       .map((l) => {
         const m = l.match(/^([^:=]+?)\s*[:=]\s*(.*)$/);
-        return m ? { k: m[1].trim(), v: m[2].trim() } : null;
+        return m ? { k: m[1].trim(), v: m[2].trim(), d: descriptions[m[1].trim()] ?? "" } : null;
       })
-      .filter((x): x is { k: string; v: string } => !!x);
+      .filter((x): x is { k: string; v: string; d: string } => !!x);
     if (!parsed.length) return;
     e.preventDefault();
     rows.splice(i, rows[i].k ? 0 : 1, ...parsed);
-    if (rows[rows.length - 1].k) rows.push({ k: "", v: "" });
+    if (rows[rows.length - 1].k) rows.push({ k: "", v: "", d: "" });
     commit();
+  }
+
+  function openBulk() {
+    bulkText = Object.entries(entries).map(([key, value]) => [key, value, ...(onDescriptionsChange ? [descriptions[key] ?? ""] : [])].join("\t")).join("\n");
+    bulkError = ""; bulk = true;
+  }
+  function applyBulk() {
+    try {
+      const parsed = parseBulkEntries(bulkText);
+      rows = [...parsed.map((row) => ({ ...row, d: row.d || descriptions[row.k] || "" })), { k: "", v: "", d: "" }];
+      if (onDisabledChange) onDisabledChange(disabledKeys.filter((key) => parsed.some((row) => sameKey(row.k, key))));
+      commit(); bulk = false; bulkError = "";
+    } catch (error) { bulkError = error instanceof Error ? error.message : String(error); }
   }
 
   function onKey(e: KeyboardEvent, i: number, field: "k" | "v") {
@@ -177,12 +200,22 @@
   }
 </script>
 
+{#if bulk}
+  <div class="bulk-editor">
+    <label for={`${suggestionsId}-bulk`}>Una fila por línea: nombre, valor y descripción separados por tabuladores. También acepta Nombre: valor.</label>
+    <textarea id={`${suggestionsId}-bulk`} aria-label="Edición en bloque" bind:value={bulkText} spellcheck="false"></textarea>
+    {#if bulkError}<p class="bulk-error" role="alert">{bulkError}</p>{/if}
+    <div class="bulk-actions"><button class="btn small" onclick={() => (bulk = false)}>Cancelar</button><button class="btn small primary" onclick={applyBulk}>Aplicar cambios</button></div>
+  </div>
+{:else}
+<div class="kv-frame">
 <table class="kv" bind:this={table}>
+  <thead><tr>{#if onDisabledChange}<th class="toggle" scope="col"><span class="sr-only">Activo</span></th>{/if}<th scope="col">Nombre</th><th scope="col">Valor</th>{#if onDescriptionsChange}<th class="description" scope="col">Descripción</th>{/if}<th class="delete-head" scope="col"><span class="sr-only">Eliminar</span></th></tr></thead>
   <tbody>
     {#each rows as row, i (i)}
-      <tr class:disabled-row={!!row.k.trim() && disabledKeys.includes(row.k.trim())}>
-        {#if onDisabledChange}<td class="toggle">{#if row.k.trim()}<input type="checkbox" checked={!disabledKeys.includes(row.k.trim())} aria-label={`Activar ${row.k}`} onchange={(e) => onDisabledChange?.(e.currentTarget.checked ? disabledKeys.filter((key) => key !== row.k.trim()) : [...disabledKeys, row.k.trim()])} />{/if}</td>{/if}
-        <td style="width: 38%">
+      <tr class:disabled-row={!!row.k.trim() && isDisabled(row.k.trim())}>
+        {#if onDisabledChange}<td class="toggle">{#if row.k.trim()}<input type="checkbox" checked={!isDisabled(row.k.trim())} aria-label={`Activar ${row.k}`} onchange={(e) => onDisabledChange?.(e.currentTarget.checked ? disabledKeys.filter((key) => !sameKey(key, row.k.trim())) : [...disabledKeys, row.k.trim()])} />{/if}</td>{/if}
+        <td class="key-cell">
           <input class="k" autocomplete="off" value={row.k} placeholder={keyPlaceholder} aria-label="{keyPlaceholder} {i + 1}"
             role={suggestions.length ? "combobox" : undefined} aria-autocomplete={suggestions.length ? "list" : undefined}
             aria-expanded={suggestions.length ? openRow === i && matches.length > 0 : undefined}
@@ -195,15 +228,17 @@
         <td>
           <VariableInput {variables} inputClass="v" value={row.v} placeholder={valuePlaceholder} label="{valuePlaceholder} {i + 1}" oninput={(e) => edit(i, "v", e.currentTarget.value)} onkeydown={(e) => onKey(e, i, "v")} compact />
         </td>
+        {#if onDescriptionsChange}<td class="description"><input class="d" value={row.d} placeholder="Descripción" aria-label={`Descripción ${i + 1}`} disabled={!row.k.trim()} oninput={(event) => edit(i, "d", event.currentTarget.value)} /></td>{/if}
         <td class="del">
           {#if i < rows.length - 1}
-            <button class="del" title="Quitar (⌘⌫)" aria-label="Quitar fila {i + 1}" onclick={() => remove(i)}>✕</button>
+            <button class="del" title="Quitar (⌘⌫)" aria-label="Quitar fila {i + 1}" onclick={() => remove(i)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button>
           {/if}
         </td>
       </tr>
     {/each}
   </tbody>
 </table>
+</div>
 {#if openRow !== null && matches.length}
   <div class="suggestions" style:left={`${popup.left}px`} style:top={`${popup.top}px`} style:width={`${popup.width}px`} style:max-height={`${popup.maxHeight}px`} style:transform={popup.above ? "translateY(-100%)" : undefined}>
     <div class="suggestions-title">CABECERAS SUGERIDAS <span>↑↓ para navegar</span></div>
@@ -220,10 +255,33 @@
 {/if}
 <div class="kv-actions">
   <button class="btn small" onclick={add}>+ {addLabel}</button>
-  <span class="muted hint">Enter salta de campo · pega varias líneas "Clave: valor" de golpe</span>
+  <button class="bulk-link" onclick={openBulk}>Edición en bloque</button>
 </div>
+{/if}
 
 <style>
+  .kv-frame { border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; }
+  .kv { table-layout: fixed; border-collapse: collapse; width: 100%; }
+  .kv th { height: 35px; font-size: 12px; font-weight: 600; color: var(--text); text-align: left; padding: 8px 10px; background: var(--bg-panel); border-bottom: 1px solid var(--border-strong); }
+  .kv th + th, .kv td + td { border-left: 1px solid var(--border); }
+  .kv td { height: 38px; padding: 3px 4px; border-bottom: 1px solid var(--border); }
+  .kv tr:last-child td { border-bottom: 0; }
+  .kv th.toggle { width: 28px; padding: 0; }
+  .kv th.delete-head { width: 30px; padding: 0; }
+  .kv .description { width: 27%; }
+  .kv input { min-width: 0; font-family: var(--font); font-size: 12px; }
+  .kv td.del { width: 30px; opacity: 1; }
+  .kv button.del { opacity: .6; width: 22px; height: 25px; display: inline-flex; align-items: center; justify-content: center; }
+  .kv button.del:hover { opacity: 1; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .bulk-link { color: var(--accent); margin-left: auto; font-size: 12px; padding: 5px 0; }
+  .bulk-link:hover { color: var(--accent-strong); }
+  .bulk-editor { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+  .bulk-editor label { color: var(--text-muted); }
+  .bulk-editor textarea { width: 100%; min-height: 180px; resize: vertical; font-family: var(--mono); background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 10px; }
+  .bulk-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .bulk-error { color: var(--err); }
+
   .suggestions {
     position: fixed; z-index: 100; overflow-y: auto; padding: 5px;
     border: 1px solid var(--border-strong); border-radius: 9px;
@@ -242,10 +300,7 @@
   .suggestion-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--bg-hover); color: var(--text-muted); font: 600 11px var(--font); }
   .kv .toggle { width: 28px; text-align: center; }
   .kv .toggle input { width: 14px; height: 14px; padding: 0; accent-color: var(--accent); }
-  .disabled-row td:not(.toggle):not(.del) { opacity: .5; }
-  .hint {
-    font-size: 11px;
-    flex: 1 1 210px;
-    min-width: 0;
-  }
+  .disabled-row { background: color-mix(in srgb, var(--bg-panel) 65%, transparent); }
+  .disabled-row td:not(.toggle):not(.del) { opacity: .42; }
+  .disabled-row .k { text-decoration: line-through; text-decoration-color: var(--text-faint); }
 </style>
