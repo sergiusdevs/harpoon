@@ -21,7 +21,7 @@
   import Splitter from "../common/Splitter.svelte";
   import { folderChain } from "../../domain/paths";
   import { parseCurl } from "../../domain/curl";
-  import CurlExport from "./CurlExport.svelte";
+  import CodeExport from "./CodeExport.svelte";
   import MultipartEditor from "./MultipartEditor.svelte";
   import DocsEditor from "./DocsEditor.svelte";
   let exportingCurl = $state(false);
@@ -237,7 +237,7 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2z"/><path d="M7 3v6h10V4M7 21v-8h10v8"/></svg>
         </button>
         {#if !isStream}
-        <button class="btn icon save" title="Exportar como cURL" aria-label="Exportar como cURL" onclick={() => (exportingCurl = true)}>
+        <button class="btn icon save" title="Generar código (cURL, fetch, Python…)" aria-label="Generar código" onclick={() => (exportingCurl = true)}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 8-4 4 4 4m8-8 4 4-4 4m-2-12-4 16" /></svg>
         </button>
         {/if}
@@ -377,7 +377,7 @@
   </section>
 {/if}
 
-{#if exportingCurl}<CurlExport onclose={() => (exportingCurl = false)} />{/if}
+{#if exportingCurl}<CodeExport onclose={() => (exportingCurl = false)} />{/if}
 
 <style>
   .stream-summary { padding: 24px; max-width: 480px; }
