@@ -14,6 +14,7 @@ import type { StreamEvent } from "../domain/streamSessions";
 export interface MockRoute { enabled: boolean; method: import("../domain/types").Method; path: string; status: number; headers: Record<string, string>; body: string }
 export interface MockConfig { routes: MockRoute[] }
 export interface MockStatus { root: string; address: string }
+export interface GitStatus { available: boolean; initialized: boolean; branch: string | null }
 
 export interface Api {
   openCollection(path: string): Promise<Collection>;
@@ -30,6 +31,10 @@ export interface Api {
   revealFolder(root: string, folder: string): Promise<void>;
   /** Abre una terminal del sistema en la carpeta. */
   openTerminal(root: string, folder: string): Promise<void>;
+  /** Si la colección está en un repositorio Git y en qué rama. */
+  gitStatus(root: string): Promise<GitStatus>;
+  /** `git init` en la raíz de la colección. */
+  gitInit(root: string): Promise<GitStatus>;
   listFolders(root: string): Promise<string[]>;
   saveFolderVars(root: string, folder: string, vars: Record<string, string>, secrets?: string[]): Promise<Collection>;
   /** Exporta un entorno (pide destino); los secretos salen vacíos. Devuelve la ruta o null si se cancela. */
@@ -105,6 +110,8 @@ async function tauriApi(): Promise<Api> {
     deleteFolder: (root, folder) => col("delete_folder", { root, folder }),
     revealFolder: (root, folder) => invoke("reveal_folder", { root, folder }),
     openTerminal: (root, folder) => invoke("open_terminal", { root, folder }),
+    gitStatus: (root) => invoke<GitStatus>("git_status", { root }),
+    gitInit: (root) => invoke<GitStatus>("git_init", { root }),
     listFolders: (root) => invoke<string[]>("list_folders", { root }),
     saveFolderVars: (root, folder, vars, secrets) => col("save_folder_vars", { root, folder, vars, secrets: secrets ?? null }),
     exportEnvironment: async (root, name, format) => {
@@ -250,6 +257,7 @@ function mockApi(): Api {
     },
   };
   const folders = new Set<string>(["pets", "store", "user", "admin", "docs"]);
+  let git: GitStatus = { available: true, initialized: false, branch: null };
   let runtime: Record<string, string> = { token: "demo-token" };
   let mockCookies: StoredCookie[] = [];
   const hist: Record<string, HistoryEntry[]> = {};
@@ -318,6 +326,8 @@ function mockApi(): Api {
     listFolders: async () => [...folders].sort(),
     revealFolder: async () => { throw new Error("Solo disponible en la app de escritorio"); },
     openTerminal: async () => { throw new Error("Solo disponible en la app de escritorio"); },
+    gitStatus: async () => ({ ...git }),
+    gitInit: async () => { git = { available: true, initialized: true, branch: "main" }; return { ...git }; },
     saveFolderVars: async (_root, folder, vars, secrets) => {
       col.folder_configs[folder] = { vars: structuredClone(vars), secrets: secrets ?? col.folder_configs[folder]?.secrets ?? [] };
       return snapshot();

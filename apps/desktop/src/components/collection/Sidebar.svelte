@@ -195,6 +195,7 @@
     { label: "Plegar todo", icon: "collapse", action: () => { for (const f of store.folders) collapsed[f] = true; } },
     { label: "Mostrar en Finder", icon: "reveal", action: () => store.revealFolder("") },
     { label: "Servidor mock", icon: "server", badge: "Beta", action: () => { store.modal = "mock"; } },
+    { label: "Cookies", icon: "lock", action: () => { store.modal = "cookies"; } },
     { label: "Ajustes", icon: "settings", sep: true, action: () => (store.modal = "settings") },
     { label: "Abrir en Terminal", icon: "terminal", shortcut: "t", action: () => store.openTerminal("") },
   ];

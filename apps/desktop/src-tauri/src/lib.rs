@@ -6,6 +6,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 mod devtools;
+mod git;
 mod http_requests;
 mod mock;
 mod sse;
@@ -786,6 +787,8 @@ pub fn run() {
             scan_request,
             missing_secrets,
             set_secret,
+            git::git_status,
+            git::git_init,
             devtools::devtools_snapshot,
             devtools::devtools_clear,
             save_folder_vars,

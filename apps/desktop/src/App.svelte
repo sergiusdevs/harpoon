@@ -12,6 +12,7 @@
   import CollectionSettings from "./components/collection/CollectionSettings.svelte";
   import FolderSettings from "./components/collection/FolderSettings.svelte";
   import EnvironmentSelect from "./components/collection/EnvironmentSelect.svelte";
+  import GitStatus from "./components/collection/GitStatus.svelte";
   import ThemePicker from "./components/settings/ThemePicker.svelte";
   import CurlImport from "./components/request/CurlImport.svelte";
   import VariableInspector from "./components/request/VariableInspector.svelte";
@@ -91,6 +92,7 @@
       <div class="title-actions">
         {#if store.collection}
           <MissingIndicator />
+          <GitStatus />
           <EnvironmentSelect />
         {/if}
         <div class="layout-buttons" role="group" aria-label="Disposición">
